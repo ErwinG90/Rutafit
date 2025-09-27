@@ -145,7 +145,7 @@ export default function LoginScreen() {
                 </View>
                 {/* Enlaces auxiliares */}
                 <View className="mt-6 items-center">
-                    <Link href="/(tabs)"> {/* Redirige al index de (tabs) */}
+                    <Link href="/(auth)/Register"> {/* Redirige al index de (tabs) */}
                         <Text className="text-primary font-semibold">¿No tienes cuenta? Regístrate</Text>
                     </Link>
                 </View>
