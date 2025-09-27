@@ -151,7 +151,7 @@ export default function LoginScreen() {
                 </View>
 
                 <View className="mt-2 items-center">
-                    <Link href="/(tabs)"> {/* Redirige al index de (tabs) */}
+                    <Link href="/(auth)/recuperar-contrasena"> {/* Redirige al index de (tabs) */}
                         <Text className="text-primary">¿Olvidaste tu contraseña?</Text>
                     </Link>
                 </View>
