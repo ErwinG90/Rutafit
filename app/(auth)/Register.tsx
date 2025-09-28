@@ -9,6 +9,7 @@ import {
   updateProfile,
   sendEmailVerification,
 } from "firebase/auth";
+import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
 import { auth } from "../../src/firebaseConfig";
 import { validateEmail, validatePassword } from "../../src/validators";
@@ -117,12 +118,24 @@ export default function RegisterScreen() {
       // 2) Guardar displayName (Nombre + Apellido)
       await updateProfile(user, { displayName: `${nombre.trim()} ${apellido.trim()}` });
 
-      // 3) (Opcional) verificación de correo
+      // 3) Guardar usuario en backend
+      await axios.post("https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/users", {
+        uid: user.uid,
+        nombre,
+        apellido,
+        email,
+        fechaNacimiento: `${anio}-${mes?.toString().padStart(2, "0")}-${dia?.toString().padStart(2, "0")}`,
+        genero,
+        deporteFavorito: deporte,
+        nivelExperiencia: nivel,
+      });
+
+      // 4) (Opcional) verificación de correo
       try {
         await sendEmailVerification(user);
-      } catch {}
+      } catch { }
 
-      // 4) Ir a tabs (quedaste logueado)
+      // 5) Ir a tabs (quedaste logueado)
       router.replace("/(tabs)");
     } catch (e: any) {
       setFormError(prettyError(e));
@@ -308,34 +321,30 @@ export default function RegisterScreen() {
           <Text className="text-[13px] text-white mb-2 mt-4">Género</Text>
           <View className="flex-row gap-3 mb-4">
             <Pressable
-              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${
-                genero === "mujer"
-                  ? "bg-primary/20 border-primary"
-                  : "bg-gray-100 border-gray-200"
-              }`}
+              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "mujer"
+                ? "bg-primary/20 border-primary"
+                : "bg-gray-100 border-gray-200"
+                }`}
               onPress={() => setGenero("mujer")}
             >
               <Text
-                className={`${
-                  genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"
-                }`}
+                className={`${genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"
+                  }`}
               >
                 Mujer
               </Text>
             </Pressable>
 
             <Pressable
-              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${
-                genero === "hombre"
-                  ? "bg-primary/20 border-primary"
-                  : "bg-gray-100 border-gray-200"
-              }`}
+              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "hombre"
+                ? "bg-primary/20 border-primary"
+                : "bg-gray-100 border-gray-200"
+                }`}
               onPress={() => setGenero("hombre")}
             >
               <Text
-                className={`${
-                  genero === "hombre" ? "text-primary font-semibold" : "text-gray-800"
-                }`}
+                className={`${genero === "hombre" ? "text-primary font-semibold" : "text-gray-800"
+                  }`}
               >
                 Hombre
               </Text>
@@ -372,9 +381,8 @@ export default function RegisterScreen() {
           {/* Botón Crear */}
           <View className="mt-4 mb-6">
             <Pressable
-              className={`rounded-2xl px-6 py-3 items-center ${
-                canSubmit ? "bg-primary" : "bg-primary/50"
-              }`}
+              className={`rounded-2xl px-6 py-3 items-center ${canSubmit ? "bg-primary" : "bg-primary/50"
+                }`}
               disabled={!canSubmit}
               onPress={onSubmit}
             >
