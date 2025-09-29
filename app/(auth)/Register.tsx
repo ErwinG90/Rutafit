@@ -1,4 +1,3 @@
-// app/(auth)/Register.tsx
 import React, { useMemo, useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,6 +12,7 @@ import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
 import { auth } from "../../src/firebaseConfig";
 import { validateEmail, validatePassword } from "../../src/validators";
+import { saveProfile } from "../../src/storage/localCache";
 
 const MESES = [
   { label: "Enero", value: 1 },
@@ -32,6 +32,7 @@ const MESES = [
 const DEPORTES = ["Ciclismo", "Running", "Trekking", "Senderismo"];
 const NIVELES = ["Básico", "Intermedio", "Avanzado", "Experto"];
 type Genero = "mujer" | "hombre";
+const SOLO_LETRAS = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]+$/;
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function RegisterScreen() {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
-  // Perfil (solo UI por ahora)
+  // Perfil
   const [dia, setDia] = useState<number | undefined>();
   const [mes, setMes] = useState<number | undefined>();
   const [anio, setAnio] = useState<number | undefined>();
@@ -56,47 +57,75 @@ export default function RegisterScreen() {
   const [showPw2, setShowPw2] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // ---- Validaciones ----
+  // ---------- VALIDACIONES ----------
+  const nombreOk = nombre.trim().length >= 2 && SOLO_LETRAS.test(nombre.trim());
+  const apellidoOk = apellido.trim().length >= 2 && SOLO_LETRAS.test(apellido.trim());
   const emailOk = validateEmail(email);
   const pwOk = validatePassword(pw);
   const pwMatch = pw.length > 0 && pw === pw2;
-  const nombreOk = nombre.trim().length >= 2;
-  const apellidoOk = apellido.trim().length >= 2;
 
-  function calcularEdad(
+  function calcularEdadSuave(
     d?: number,
     m?: number,
     a?: number
-  ): number | null {
-    if (!d || !m || !a) return null;
+  ): { exactaOK: boolean; edad?: number; futura?: boolean; menor16Posible?: boolean } {
     const hoy = new Date();
+    const Y = hoy.getFullYear();
+    const M = hoy.getMonth() + 1;
+    const D = hoy.getDate();
+
+    if (!a) return { exactaOK: false };
+    if (a > Y) return { exactaOK: false, futura: true };
+
+    if (!m || !d) {
+      if (a > Y - 16) return { exactaOK: false, menor16Posible: true };
+      if (a === Y - 16) return { exactaOK: false, menor16Posible: true };
+      return { exactaOK: false };
+    }
+
     const nacimiento = new Date(a, m - 1, d);
-    let edad = hoy.getFullYear() - nacimiento.getFullYear();
-    const mo = hoy.getMonth() - nacimiento.getMonth();
-    if (mo < 0 || (mo === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
-    return edad;
+    if (nacimiento > hoy) return { exactaOK: false, futura: true };
+
+    let edad = Y - a;
+    if (m > M || (m === M && d > D)) edad--;
+    return { exactaOK: true, edad };
   }
 
-  const edad = calcularEdad(dia, mes, anio);
-  const fechaOk = !!edad && edad >= 16;
+  const edadInfo = calcularEdadSuave(dia, mes, anio);
+  const fechaOk = edadInfo.exactaOK && (edadInfo.edad ?? 0) >= 16;
 
-  const canSubmit =
-    emailOk && pwOk && pwMatch && nombreOk && apellidoOk && fechaOk && !submitting;
-
-  // Hints
+  const nombreHint = useMemo(
+    () => (!nombre || nombreOk ? "" : "Solo letras y mínimo 2 caracteres."),
+    [nombre, nombreOk]
+  );
+  const apellidoHint = useMemo(
+    () => (!apellido || apellidoOk ? "" : "Solo letras y mínimo 2 caracteres."),
+    [apellido, apellidoOk]
+  );
   const emailHint = useMemo(
-    () => (!email || emailOk ? "" : "Formato: palabra@palabra.com | palabra@palabra.cl"),
+    () => (!email || emailOk ? "" : "Formato: palabra@dominio.com"),
     [email, emailOk]
   );
   const pwHint = useMemo(
-    () => (!pw || pwOk ? "" : "Mín. 6, con minúscula y MAYÚSCULA"),
+    () => (!pw || pwOk ? "" : "Mínimo 6 caracteres, con minúscula y MAYÚSCULA."),
     [pw, pwOk]
   );
   const pw2Hint = useMemo(
-    () => (!pw2 || pwMatch ? "" : "Las contraseñas no coinciden"),
+    () => (!pw2 || pwMatch ? "" : "Las contraseñas no coinciden."),
     [pw2, pwMatch]
   );
+
+  const fechaHint = useMemo(() => {
+    if (edadInfo.futura) return "La fecha no puede ser futura.";
+    if (edadInfo.menor16Posible) return "Debes tener al menos 16 años.";
+    if (edadInfo.exactaOK && (edadInfo.edad ?? 0) < 16) return "Debes tener al menos 16 años.";
+    return "";
+  }, [edadInfo]);
+
+  const canSubmit =
+    nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaOk && !submitting;
 
   function prettyError(e: any) {
     const code = e?.code || "";
@@ -107,45 +136,61 @@ export default function RegisterScreen() {
     return "No se pudo crear la cuenta.";
   }
 
+  // ---------- SUBMIT ----------
   async function onSubmit() {
     if (!canSubmit) return;
     setSubmitting(true);
     setFormError(null);
+    setSuccessMsg(null);
     try {
-      // 1) Crear usuario en Firebase
+      // 1) Firebase
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), pw);
+      const displayName = `${nombre.trim()} ${apellido.trim()}`;
+      await updateProfile(user, { displayName });
+      try { await sendEmailVerification(user); } catch {}
 
-      // 2) Guardar displayName (Nombre + Apellido)
-      await updateProfile(user, { displayName: `${nombre.trim()} ${apellido.trim()}` });
+      // 2) Backend (best-effort)
+      try {
+        await axios.post("https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/users", {
+          uid: user.uid,
+          nombre,
+          apellido,
+          email,
+          fechaNacimiento: `${anio}-${String(mes ?? "").padStart(2, "0")}-${String(dia ?? "").padStart(2, "0")}`,
+          genero,
+          deporteFavorito: deporte,
+          nivelExperiencia: nivel,
+        });
+      } catch (err) {
+        console.log("WARN backend:", err);
+      }
 
-      // 3) Guardar usuario en backend
-      await axios.post("https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/users", {
+      // 3) Cache local
+      await saveProfile({
         uid: user.uid,
-        nombre,
-        apellido,
+        nombre: nombre.trim(),
+        apellido: apellido.trim(),
         email,
-        fechaNacimiento: `${anio}-${mes?.toString().padStart(2, "0")}-${dia?.toString().padStart(2, "0")}`,
+        fechaNacimiento: `${anio}-${String(mes ?? "").padStart(2, "0")}-${String(dia ?? "").padStart(2, "0")}`,
         genero,
         deporteFavorito: deporte,
         nivelExperiencia: nivel,
+        displayName,
+        updatedAt: new Date().toISOString(),
       });
 
-      // 4) (Opcional) verificación de correo
-      try {
-        await sendEmailVerification(user);
-      } catch { }
-
-      // 5) Ir a tabs (quedaste logueado)
-      router.replace("/(tabs)");
+      // 4) Éxito + redirigir a Login
+      setSuccessMsg("✅ Cuenta creada exitosamente. Serás redirigido al login…");
+      setTimeout(() => router.replace("/(auth)/Login"), 1500);
     } catch (e: any) {
-      setFormError(prettyError(e));
+      setFormError(prettyError(e)); // ❌ mensaje rojo
       console.log("signup error:", e);
     } finally {
       setSubmitting(false);
     }
   }
 
-  // Helpers
+  // helpers UI
   const years = (() => {
     const now = new Date().getUTCFullYear();
     const arr: number[] = [];
@@ -175,13 +220,12 @@ export default function RegisterScreen() {
                 placeholder="Escribe tu nombre"
                 placeholderTextColor="#9ca3af"
                 value={nombre}
-                onChangeText={(t) => {
-                  setNombre(t);
-                  if (formError) setFormError(null);
-                }}
+                onChangeText={(t) => { setNombre(t); if (formError) setFormError(null); }}
                 returnKeyType="next"
+                autoCapitalize="words"
               />
             </View>
+            {!!nombreHint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{nombreHint}</Text>}
           </View>
 
           {/* Apellido */}
@@ -194,13 +238,12 @@ export default function RegisterScreen() {
                 placeholder="Escribe tu apellido"
                 placeholderTextColor="#9ca3af"
                 value={apellido}
-                onChangeText={(t) => {
-                  setApellido(t);
-                  if (formError) setFormError(null);
-                }}
+                onChangeText={(t) => { setApellido(t); if (formError) setFormError(null); }}
                 returnKeyType="next"
+                autoCapitalize="words"
               />
             </View>
+            {!!apellidoHint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{apellidoHint}</Text>}
           </View>
 
           {/* Email */}
@@ -215,14 +258,11 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 value={email}
-                onChangeText={(t) => {
-                  setEmail(t);
-                  if (formError) setFormError(null);
-                }}
+                onChangeText={(t) => { setEmail(t); if (formError) setFormError(null); }}
                 returnKeyType="next"
               />
             </View>
-            {!!emailHint && <Text className="text-xs mt-1 text-primary">{emailHint}</Text>}
+            {!!emailHint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{emailHint}</Text>}
           </View>
 
           {/* Contraseña */}
@@ -236,21 +276,14 @@ export default function RegisterScreen() {
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw}
                 value={pw}
-                onChangeText={(t) => {
-                  setPw(t);
-                  if (formError) setFormError(null);
-                }}
+                onChangeText={(t) => { setPw(t); if (formError) setFormError(null); }}
                 returnKeyType="next"
               />
               <Pressable onPress={() => setShowPw((s) => !s)} hitSlop={8}>
-                <Ionicons
-                  name={showPw ? "eye-off" : "eye"}
-                  size={18}
-                  color="#6b7280"
-                />
+                <Ionicons name={showPw ? "eye-off" : "eye"} size={18} color="#6b7280" />
               </Pressable>
             </View>
-            {!!pwHint && <Text className="text-xs mt-1 text-primary">{pwHint}</Text>}
+            {!!pwHint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{pwHint}</Text>}
           </View>
 
           {/* Repetir contraseña */}
@@ -264,56 +297,61 @@ export default function RegisterScreen() {
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw2}
                 value={pw2}
-                onChangeText={(t) => {
-                  setPw2(t);
-                  if (formError) setFormError(null);
-                }}
+                onChangeText={(t) => { setPw2(t); if (formError) setFormError(null); }}
                 returnKeyType="done"
                 onSubmitEditing={onSubmit}
               />
               <Pressable onPress={() => setShowPw2((s) => !s)} hitSlop={8}>
-                <Ionicons
-                  name={showPw2 ? "eye-off" : "eye"}
-                  size={18}
-                  color="#6b7280"
-                />
+                <Ionicons name={showPw2 ? "eye-off" : "eye"} size={18} color="#6b7280" />
               </Pressable>
             </View>
-            {!!pw2Hint && <Text className="text-xs mt-1 text-primary">{pw2Hint}</Text>}
+            {!!pw2Hint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{pw2Hint}</Text>}
           </View>
 
           {/* Fecha de nacimiento */}
           <Text className="text-[13px] text-white mb-2">Fecha de nacimiento</Text>
           <View className="flex-row gap-3 mb-1">
+            {/* Día */}
             <View className="flex-1 bg-gray-100 rounded-xl border border-gray-200">
-              <Picker selectedValue={dia} onValueChange={(v) => setDia(v)}>
-                <Picker.Item label="DD" value={undefined} />
+              <Picker
+                selectedValue={dia ?? 0}
+                onValueChange={(v: number) => setDia(v === 0 ? undefined : v)}
+              >
+                <Picker.Item label="Día" value={0} />
                 {days.map((d) => (
                   <Picker.Item key={d} label={String(d)} value={d} />
                 ))}
               </Picker>
             </View>
+            {/* Mes */}
             <View className="flex-1 bg-gray-100 rounded-xl border border-gray-200">
-              <Picker selectedValue={mes} onValueChange={(v) => setMes(v)}>
-                <Picker.Item label="Mes" value={undefined} />
+              <Picker
+                selectedValue={mes ?? 0}
+                onValueChange={(v: number) => setMes(v === 0 ? undefined : v)}
+              >
+                <Picker.Item label="Mes" value={0} />
                 {MESES.map((m) => (
                   <Picker.Item key={m.value} label={m.label} value={m.value} />
                 ))}
               </Picker>
             </View>
+            {/* Año */}
             <View className="flex-1 bg-gray-100 rounded-xl border border-gray-200">
-              <Picker selectedValue={anio} onValueChange={(v) => setAnio(v)}>
-                <Picker.Item label="Año" value={undefined} />
+              <Picker
+                selectedValue={anio ?? 0}
+                onValueChange={(v: number) => setAnio(v === 0 ? undefined : v)}
+              >
+                <Picker.Item label="Año" value={0} />
                 {years.map((y) => (
                   <Picker.Item key={y} label={String(y)} value={y} />
                 ))}
               </Picker>
             </View>
           </View>
-          {/* Mensaje si es menor de 16 */}
-          {!!edad && edad < 16 && (
+          {/* 🔴 Mensaje de validación de fecha */}
+          {!!fechaHint && (
             <Text className="text-xs mt-1" style={{ color: "#C51217" }}>
-              Debes tener al menos 16 años.
+              {fechaHint}
             </Text>
           )}
 
@@ -321,31 +359,23 @@ export default function RegisterScreen() {
           <Text className="text-[13px] text-white mb-2 mt-4">Género</Text>
           <View className="flex-row gap-3 mb-4">
             <Pressable
-              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "mujer"
-                ? "bg-primary/20 border-primary"
-                : "bg-gray-100 border-gray-200"
-                }`}
+              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${
+                genero === "mujer" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"
+              }`}
               onPress={() => setGenero("mujer")}
             >
-              <Text
-                className={`${genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"
-                  }`}
-              >
+              <Text className={`${genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"}`}>
                 Mujer
               </Text>
             </Pressable>
 
             <Pressable
-              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "hombre"
-                ? "bg-primary/20 border-primary"
-                : "bg-gray-100 border-gray-200"
-                }`}
+              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${
+                genero === "hombre" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"
+              }`}
               onPress={() => setGenero("hombre")}
             >
-              <Text
-                className={`${genero === "hombre" ? "text-primary font-semibold" : "text-gray-800"
-                  }`}
-              >
+              <Text className={`${genero === "hombre" ? "text-primary font-semibold" : "text-gray-800"}`}>
                 Hombre
               </Text>
             </Pressable>
@@ -371,18 +401,22 @@ export default function RegisterScreen() {
             </Picker>
           </View>
 
-          {/* Error global */}
+          {/* Mensajes globales */}
           {!!formError && (
             <Text className="mt-2 text-[13px]" style={{ color: "#C51217" }}>
               {formError}
+            </Text>
+          )}
+          {!!successMsg && (
+            <Text className="mt-2 text-[13px]" style={{ color: "green" }}>
+              {successMsg}
             </Text>
           )}
 
           {/* Botón Crear */}
           <View className="mt-4 mb-6">
             <Pressable
-              className={`rounded-2xl px-6 py-3 items-center ${canSubmit ? "bg-primary" : "bg-primary/50"
-                }`}
+              className={`rounded-2xl px-6 py-3 items-center ${canSubmit ? "bg-primary" : "bg-primary/50"}`}
               disabled={!canSubmit}
               onPress={onSubmit}
             >
