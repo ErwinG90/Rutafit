@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { View, Text, TextInput, Pressable, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,6 +13,8 @@ import { Picker } from "@react-native-picker/picker";
 import { auth } from "../../src/firebaseConfig";
 import { validateEmail, validatePassword } from "../../src/validators";
 import { saveProfile } from "../../src/storage/localCache";
+import type { Deporte } from "../interface/Deporte";
+import type { Nivel } from "../interface/Nivel";
 
 const MESES = [
   { label: "Enero", value: 1 },
@@ -29,8 +31,8 @@ const MESES = [
   { label: "Diciembre", value: 12 },
 ];
 
-const DEPORTES = ["Ciclismo", "Running", "Trekking", "Senderismo"];
-const NIVELES = ["Básico", "Intermedio", "Avanzado", "Experto"];
+//const DEPORTES = ["Ciclismo", "Running", "Trekking", "Senderismo"];
+//const NIVELES = ["Básico", "Intermedio", "Avanzado", "Experto"];
 type Genero = "mujer" | "hombre";
 const SOLO_LETRAS = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]+$/;
 
@@ -44,13 +46,18 @@ export default function RegisterScreen() {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
-  // Perfil
+  // Perfil aqui falta el deporte y nivel
   const [dia, setDia] = useState<number | undefined>();
   const [mes, setMes] = useState<number | undefined>();
   const [anio, setAnio] = useState<number | undefined>();
   const [genero, setGenero] = useState<Genero>("mujer");
-  const [deporte, setDeporte] = useState(DEPORTES[0]);
-  const [nivel, setNivel] = useState(NIVELES[0]);
+  //const [deporte, setDeporte] = useState(DEPORTES[0]);
+  //const [nivel, setNivel] = useState(NIVELES[0]);
+
+  const [deportes, setDeportes] = useState<Deporte[]>([]);
+  const [niveles, setNiveles] = useState<Nivel[]>([]);
+  const [deporteId, setDeporteId] = useState<string | undefined>();
+  const [nivelId, setNivelId] = useState<string | undefined>();
 
   // UI
   const [showPw, setShowPw] = useState(false);
@@ -58,6 +65,26 @@ export default function RegisterScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // ---- Fetch deportes y niveles al montar ----
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        console.log('Llamando a deportes...');
+        const deportesRes = await axios.get('https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/tipos-deporte');
+        console.log('DEPORTES: ', deportesRes.data);
+        setDeportes(deportesRes.data);
+
+        console.log('Llamando a niveles..');
+        const nivelesRes = await axios.get('https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/nivel-experiencia');
+        console.log('NIVELES: ', nivelesRes.data);
+        setNiveles(nivelesRes.data);
+      } catch (error) {
+        console.log("Error cargando datos:", error);
+      }
+    };
+    fetchData();
+  }, []);
 
   // ---------- VALIDACIONES ----------
   const nombreOk = nombre.trim().length >= 2 && SOLO_LETRAS.test(nombre.trim());
@@ -147,7 +174,7 @@ export default function RegisterScreen() {
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), pw);
       const displayName = `${nombre.trim()} ${apellido.trim()}`;
       await updateProfile(user, { displayName });
-      try { await sendEmailVerification(user); } catch {}
+      try { await sendEmailVerification(user); } catch { }
 
       // 2) Backend (best-effort)
       try {
@@ -158,8 +185,8 @@ export default function RegisterScreen() {
           email,
           fechaNacimiento: `${anio}-${String(mes ?? "").padStart(2, "0")}-${String(dia ?? "").padStart(2, "0")}`,
           genero,
-          deporteFavorito: deporte,
-          nivelExperiencia: nivel,
+          deporteFavorito: deporteId,
+          nivelExperiencia: nivelId,
         });
       } catch (err) {
         console.log("WARN backend:", err);
@@ -173,8 +200,8 @@ export default function RegisterScreen() {
         email,
         fechaNacimiento: `${anio}-${String(mes ?? "").padStart(2, "0")}-${String(dia ?? "").padStart(2, "0")}`,
         genero,
-        deporteFavorito: deporte,
-        nivelExperiencia: nivel,
+        deporteFavorito: deporteId,
+        nivelExperiencia: nivelId,
         displayName,
         updatedAt: new Date().toISOString(),
       });
@@ -183,7 +210,7 @@ export default function RegisterScreen() {
       setSuccessMsg("✅ Cuenta creada exitosamente. Serás redirigido al login…");
       setTimeout(() => router.replace("/(auth)/Login"), 1500);
     } catch (e: any) {
-      setFormError(prettyError(e)); // ❌ mensaje rojo
+      setFormError(prettyError(e));
       console.log("signup error:", e);
     } finally {
       setSubmitting(false);
@@ -359,9 +386,8 @@ export default function RegisterScreen() {
           <Text className="text-[13px] text-white mb-2 mt-4">Género</Text>
           <View className="flex-row gap-3 mb-4">
             <Pressable
-              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${
-                genero === "mujer" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"
-              }`}
+              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "mujer" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"
+                }`}
               onPress={() => setGenero("mujer")}
             >
               <Text className={`${genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"}`}>
@@ -370,9 +396,8 @@ export default function RegisterScreen() {
             </Pressable>
 
             <Pressable
-              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${
-                genero === "hombre" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"
-              }`}
+              className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "hombre" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"
+                }`}
               onPress={() => setGenero("hombre")}
             >
               <Text className={`${genero === "hombre" ? "text-primary font-semibold" : "text-gray-800"}`}>
@@ -384,9 +409,10 @@ export default function RegisterScreen() {
           {/* Deporte */}
           <Text className="text-[13px] text-white mb-2">Deporte</Text>
           <View className="mb-4 bg-gray-100 rounded-xl border border-gray-200">
-            <Picker selectedValue={deporte} onValueChange={(v) => setDeporte(v)}>
-              {DEPORTES.map((d) => (
-                <Picker.Item key={d} label={d} value={d} />
+            <Picker selectedValue={deporteId} onValueChange={(v) => setDeporteId(v)}>
+              <Picker.Item label="Selecciona un deporte" value={undefined} />
+              {deportes.map((d) => (
+                <Picker.Item key={d._id} label={d.nombre} value={d._id} />
               ))}
             </Picker>
           </View>
@@ -394,9 +420,10 @@ export default function RegisterScreen() {
           {/* Nivel */}
           <Text className="text-[13px] text-white mb-2">Nivel de experiencia</Text>
           <View className="mb-2 bg-gray-100 rounded-xl border border-gray-200">
-            <Picker selectedValue={nivel} onValueChange={(v) => setNivel(v)}>
-              {NIVELES.map((n) => (
-                <Picker.Item key={n} label={n} value={n} />
+            <Picker selectedValue={nivelId} onValueChange={(v) => setNivelId(v)}>
+              <Picker.Item label="Selecciona un nivel" value={undefined} />
+              {niveles.map((n) => (
+                <Picker.Item key={n._id} label={n.nombre} value={n._id} />
               ))}
             </Picker>
           </View>
