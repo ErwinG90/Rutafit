@@ -4,7 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import { useState, useEffect } from "react";
 import axios from "axios";
-import type { Deporte } from "../interface/Deporte";
+import type { Deporte } from "../../interface/Deporte";
+import { deporteService } from "../../services/DeporteService";
 
 export default function EventosScreen() {
     const [modalVisible, setModalVisible] = useState(false);
@@ -22,14 +23,8 @@ export default function EventosScreen() {
     // ---- Fetch deportes al montar ----
     useEffect(() => {
         const fetchDeportes = async () => {
-            try {
-                console.log('Llamando a deportes...');
-                const deportesRes = await axios.get('https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/tipos-deporte');
-                console.log('DEPORTES: ', deportesRes.data);
-                setDeportes(deportesRes.data);
-            } catch (error) {
-                console.log("Error cargando deportes:", error);
-            }
+            const deportesRes = await deporteService.getDeportes();
+            setDeportes(deportesRes);
         };
         fetchDeportes();
     }, []);

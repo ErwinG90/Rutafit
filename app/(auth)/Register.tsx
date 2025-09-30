@@ -11,30 +11,21 @@ import {
 import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
 import { auth } from "../../src/firebaseConfig";
-import { validateEmail, validatePassword } from "../../src/validators";
+import { validateEmail, validatePassword, calcularEdadSuave } from "../../src/validators";
 import { saveProfile } from "../../src/storage/localCache";
-import type { Deporte } from "../interface/Deporte";
-import type { Nivel } from "../interface/Nivel";
-
-const MESES = [
-  { label: "Enero", value: 1 },
-  { label: "Febrero", value: 2 },
-  { label: "Marzo", value: 3 },
-  { label: "Abril", value: 4 },
-  { label: "Mayo", value: 5 },
-  { label: "Junio", value: 6 },
-  { label: "Julio", value: 7 },
-  { label: "Agosto", value: 8 },
-  { label: "Septiembre", value: 9 },
-  { label: "Octubre", value: 10 },
-  { label: "Noviembre", value: 11 },
-  { label: "Diciembre", value: 12 },
-];
-
-//const DEPORTES = ["Ciclismo", "Running", "Trekking", "Senderismo"];
-//const NIVELES = ["Básico", "Intermedio", "Avanzado", "Experto"];
-type Genero = "mujer" | "hombre";
-const SOLO_LETRAS = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]+$/;
+import type { Deporte } from "../../interface/Deporte";
+import type { Nivel } from "../../interface/Nivel";
+import { deporteService } from "../../services/DeporteService";
+import { nivelService } from "../../services/NivelService";
+import {
+  MESES,
+  SOLO_LETRAS,
+  Genero,
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  PLACEHOLDERS,
+  VALIDATION_CONFIG
+} from "../../src/Constants";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -51,8 +42,7 @@ export default function RegisterScreen() {
   const [mes, setMes] = useState<number | undefined>();
   const [anio, setAnio] = useState<number | undefined>();
   const [genero, setGenero] = useState<Genero>("mujer");
-  //const [deporte, setDeporte] = useState(DEPORTES[0]);
-  //const [nivel, setNivel] = useState(NIVELES[0]);
+
 
   const [deportes, setDeportes] = useState<Deporte[]>([]);
   const [niveles, setNiveles] = useState<Nivel[]>([]);
@@ -70,15 +60,10 @@ export default function RegisterScreen() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log('Llamando a deportes...');
-        const deportesRes = await axios.get('https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/tipos-deporte');
-        console.log('DEPORTES: ', deportesRes.data);
-        setDeportes(deportesRes.data);
-
-        console.log('Llamando a niveles..');
-        const nivelesRes = await axios.get('https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/nivel-experiencia');
-        console.log('NIVELES: ', nivelesRes.data);
-        setNiveles(nivelesRes.data);
+        const deportesRes = await deporteService.getDeportes();
+        setDeportes(deportesRes);
+        const nivelesRes = await nivelService.getNiveles();
+        setNiveles(nivelesRes);
       } catch (error) {
         console.log("Error cargando datos:", error);
       }
@@ -87,67 +72,39 @@ export default function RegisterScreen() {
   }, []);
 
   // ---------- VALIDACIONES ----------
-  const nombreOk = nombre.trim().length >= 2 && SOLO_LETRAS.test(nombre.trim());
-  const apellidoOk = apellido.trim().length >= 2 && SOLO_LETRAS.test(apellido.trim());
+  const nombreOk = nombre.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(nombre.trim());
+  const apellidoOk = apellido.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(apellido.trim());
   const emailOk = validateEmail(email);
   const pwOk = validatePassword(pw);
   const pwMatch = pw.length > 0 && pw === pw2;
-
-  function calcularEdadSuave(
-    d?: number,
-    m?: number,
-    a?: number
-  ): { exactaOK: boolean; edad?: number; futura?: boolean; menor16Posible?: boolean } {
-    const hoy = new Date();
-    const Y = hoy.getFullYear();
-    const M = hoy.getMonth() + 1;
-    const D = hoy.getDate();
-
-    if (!a) return { exactaOK: false };
-    if (a > Y) return { exactaOK: false, futura: true };
-
-    if (!m || !d) {
-      if (a > Y - 16) return { exactaOK: false, menor16Posible: true };
-      if (a === Y - 16) return { exactaOK: false, menor16Posible: true };
-      return { exactaOK: false };
-    }
-
-    const nacimiento = new Date(a, m - 1, d);
-    if (nacimiento > hoy) return { exactaOK: false, futura: true };
-
-    let edad = Y - a;
-    if (m > M || (m === M && d > D)) edad--;
-    return { exactaOK: true, edad };
-  }
-
   const edadInfo = calcularEdadSuave(dia, mes, anio);
-  const fechaOk = edadInfo.exactaOK && (edadInfo.edad ?? 0) >= 16;
+  const fechaOk = edadInfo.exactaOK && (edadInfo.edad ?? 0) >= VALIDATION_CONFIG.MIN_AGE;
 
   const nombreHint = useMemo(
-    () => (!nombre || nombreOk ? "" : "Solo letras y mínimo 2 caracteres."),
+    () => (!nombre || nombreOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID),
     [nombre, nombreOk]
   );
   const apellidoHint = useMemo(
-    () => (!apellido || apellidoOk ? "" : "Solo letras y mínimo 2 caracteres."),
+    () => (!apellido || apellidoOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID),
     [apellido, apellidoOk]
   );
   const emailHint = useMemo(
-    () => (!email || emailOk ? "" : "Formato: palabra@dominio.com"),
+    () => (!email || emailOk ? "" : ERROR_MESSAGES.VALIDATION.EMAIL_INVALID),
     [email, emailOk]
   );
   const pwHint = useMemo(
-    () => (!pw || pwOk ? "" : "Mínimo 6 caracteres, con minúscula y MAYÚSCULA."),
+    () => (!pw || pwOk ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_INVALID),
     [pw, pwOk]
   );
   const pw2Hint = useMemo(
-    () => (!pw2 || pwMatch ? "" : "Las contraseñas no coinciden."),
+    () => (!pw2 || pwMatch ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_MISMATCH),
     [pw2, pwMatch]
   );
 
   const fechaHint = useMemo(() => {
-    if (edadInfo.futura) return "La fecha no puede ser futura.";
-    if (edadInfo.menor16Posible) return "Debes tener al menos 16 años.";
-    if (edadInfo.exactaOK && (edadInfo.edad ?? 0) < 16) return "Debes tener al menos 16 años.";
+    if (edadInfo.futura) return ERROR_MESSAGES.VALIDATION.DATE_FUTURE;
+    if (edadInfo.menor16Posible) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
+    if (edadInfo.exactaOK && (edadInfo.edad ?? 0) < VALIDATION_CONFIG.MIN_AGE) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
     return "";
   }, [edadInfo]);
 
@@ -156,11 +113,11 @@ export default function RegisterScreen() {
 
   function prettyError(e: any) {
     const code = e?.code || "";
-    if (code === "auth/email-already-in-use") return "Ese correo ya está registrado.";
-    if (code === "auth/invalid-email") return "El correo no es válido.";
-    if (code === "auth/weak-password") return "Contraseña muy débil (mín. 6).";
-    if (code === "auth/network-request-failed") return "Sin conexión. Revisa tu internet.";
-    return "No se pudo crear la cuenta.";
+    if (code === "auth/email-already-in-use") return ERROR_MESSAGES.AUTH.EMAIL_IN_USE;
+    if (code === "auth/invalid-email") return ERROR_MESSAGES.AUTH.INVALID_EMAIL;
+    if (code === "auth/weak-password") return ERROR_MESSAGES.AUTH.WEAK_PASSWORD;
+    if (code === "auth/network-request-failed") return ERROR_MESSAGES.AUTH.NETWORK_ERROR;
+    return ERROR_MESSAGES.AUTH.DEFAULT;
   }
 
   // ---------- SUBMIT ----------
@@ -207,7 +164,7 @@ export default function RegisterScreen() {
       });
 
       // 4) Éxito + redirigir a Login
-      setSuccessMsg("✅ Cuenta creada exitosamente. Serás redirigido al login…");
+      setSuccessMsg(SUCCESS_MESSAGES.ACCOUNT_CREATED);
       setTimeout(() => router.replace("/(auth)/Login"), 1500);
     } catch (e: any) {
       setFormError(prettyError(e));
@@ -244,7 +201,7 @@ export default function RegisterScreen() {
               <Ionicons name="person" size={18} color="#6b7280" />
               <TextInput
                 className="flex-1 ml-2 text-text"
-                placeholder="Escribe tu nombre"
+                placeholder={PLACEHOLDERS.NAME}
                 placeholderTextColor="#9ca3af"
                 value={nombre}
                 onChangeText={(t) => { setNombre(t); if (formError) setFormError(null); }}
@@ -262,7 +219,7 @@ export default function RegisterScreen() {
               <Ionicons name="person" size={18} color="#6b7280" />
               <TextInput
                 className="flex-1 ml-2 text-text"
-                placeholder="Escribe tu apellido"
+                placeholder={PLACEHOLDERS.LAST_NAME}
                 placeholderTextColor="#9ca3af"
                 value={apellido}
                 onChangeText={(t) => { setApellido(t); if (formError) setFormError(null); }}
@@ -280,7 +237,7 @@ export default function RegisterScreen() {
               <Ionicons name="mail" size={18} color="#6b7280" />
               <TextInput
                 className="flex-1 ml-2 text-text"
-                placeholder="example@gmail.com"
+                placeholder={PLACEHOLDERS.EMAIL}
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="none"
                 keyboardType="email-address"
@@ -299,7 +256,7 @@ export default function RegisterScreen() {
               <Ionicons name="lock-closed" size={18} color="#6b7280" />
               <TextInput
                 className="flex-1 ml-2 text-text"
-                placeholder="Mínimo 6 caracteres"
+                placeholder={PLACEHOLDERS.PASSWORD}
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw}
                 value={pw}
@@ -320,7 +277,7 @@ export default function RegisterScreen() {
               <Ionicons name="lock-closed" size={18} color="#6b7280" />
               <TextInput
                 className="flex-1 ml-2 text-text"
-                placeholder="Vuelve a escribir la contraseña"
+                placeholder={PLACEHOLDERS.REPEAT_PASSWORD}
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw2}
                 value={pw2}
@@ -375,7 +332,7 @@ export default function RegisterScreen() {
               </Picker>
             </View>
           </View>
-          {/* 🔴 Mensaje de validación de fecha */}
+          {/*Mensaje de validación de fecha */}
           {!!fechaHint && (
             <Text className="text-xs mt-1" style={{ color: "#C51217" }}>
               {fechaHint}
