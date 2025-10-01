@@ -24,7 +24,7 @@ export default function EventosScreen() {
     const [descripcion, setDescripcion] = useState("");
     const [deportes, setDeportes] = useState<Deporte[]>([]);
     const [erroresValidacion, setErroresValidacion] = useState<string[]>([]);
-    
+
     // Estados para errores específicos de campos
     const [errorFecha, setErrorFecha] = useState<string | null>(null);
     const [errorHora, setErrorHora] = useState<string | null>(null);
@@ -120,13 +120,13 @@ export default function EventosScreen() {
         const errorDeporteValidacion = validateDeporteEvento(deporteId);
         const errorTituloValidacion = validateTituloEvento(nombreEvento);
         const errorUbicacionValidacion = validateUbicacionEvento(lugar);
-        
+
         setErrorFecha(errorFechaValidacion);
         setErrorHora(errorHoraValidacion);
         setErrorDeporte(errorDeporteValidacion);
         setErrorTitulo(errorTituloValidacion);
         setErrorUbicacion(errorUbicacionValidacion);
-        
+
         // Validar formulario completo
         const validationResult = validateEventoForm(
             nombreEvento,
@@ -153,7 +153,7 @@ export default function EventosScreen() {
             maxParticipantes,
             descripcion
         });
-        
+
         // Limpiar errores
         setErroresValidacion([]);
         setErrorFecha(null);
@@ -161,7 +161,7 @@ export default function EventosScreen() {
         setErrorDeporte(null);
         setErrorTitulo(null);
         setErrorUbicacion(null);
-        
+
         // Mostrar confirmación según la plataforma
         if (Platform.OS === 'web') {
             // Mensaje de texto verde en web
@@ -269,9 +269,12 @@ export default function EventosScreen() {
                                         if (erroresValidacion.length > 0) {
                                             setErroresValidacion([]);
                                         }
-                                        // Limpiar error de título si hay texto
-                                        if (text.trim() !== "") {
-                                            setErrorTitulo(null);
+                                        // Limpiar error de título si hay texto válido
+                                        if (text.trim() !== "" && errorTitulo) {
+                                            const errorTituloValidacion = validateTituloEvento(text);
+                                            if (!errorTituloValidacion) {
+                                                setErrorTitulo(null);
+                                            }
                                         }
                                     }}
                                 />
@@ -399,7 +402,7 @@ export default function EventosScreen() {
                                                 const [hours, minutes] = e.target.value.split(':');
                                                 const newTime = new Date(horaEvento);
                                                 newTime.setHours(parseInt(hours), parseInt(minutes));
-                                                
+
                                                 setHoraEvento(newTime);
                                                 // Validar y mostrar error si es necesario
                                                 const errorHoraValidacion = validateHoraEvento(newTime);
