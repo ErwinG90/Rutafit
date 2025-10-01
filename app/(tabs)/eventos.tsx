@@ -121,12 +121,6 @@ export default function EventosScreen() {
         const errorTituloValidacion = validateTituloEvento(nombreEvento);
         const errorUbicacionValidacion = validateUbicacionEvento(lugar);
 
-        setErrorFecha(errorFechaValidacion);
-        setErrorHora(errorHoraValidacion);
-        setErrorDeporte(errorDeporteValidacion);
-        setErrorTitulo(errorTituloValidacion);
-        setErrorUbicacion(errorUbicacionValidacion);
-
         // Validar formulario completo
         const validationResult = validateEventoForm(
             nombreEvento,
@@ -138,9 +132,17 @@ export default function EventosScreen() {
             descripcion
         );
 
+        // Actualizar estados de error
+        setErrorFecha(errorFechaValidacion);
+        setErrorHora(errorHoraValidacion);
+        setErrorDeporte(errorDeporteValidacion);
+        setErrorTitulo(errorTituloValidacion);
+        setErrorUbicacion(errorUbicacionValidacion);
+        setErroresValidacion(validationResult.errors);
+
+        // Verificar si hay errores después de actualizar estados
         if (!validationResult.isValid || errorFechaValidacion || errorHoraValidacion || errorDeporteValidacion || errorTituloValidacion || errorUbicacionValidacion) {
-            setErroresValidacion(validationResult.errors);
-            return;
+            return; // Detener ejecución si hay errores
         }
 
         // Si todas las validaciones pasan, proceder a crear el evento
