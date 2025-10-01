@@ -32,3 +32,144 @@ export function calcularEdadSuave(
     if (m > M || (m === M && d > D)) edad--;
     return { exactaOK: true, edad };
 }
+
+// ===== VALIDACIONES PARA EVENTOS =====
+
+export interface EventoValidationResult {
+    isValid: boolean;
+    errors: string[];
+}
+
+export function validateEventoForm(
+    nombreEvento: string,
+    deporteId: string | undefined,
+    lugar: string,
+    fechaEvento: Date,
+    horaEvento: Date,
+    maxParticipantes: number,
+    descripcion?: string
+): EventoValidationResult {
+    const errors: string[] = [];
+
+    // Validar campos obligatorios
+    if (!nombreEvento.trim()) {
+        errors.push('El título del evento es obligatorio');
+    }
+    
+    if (!deporteId || deporteId === 'undefined' || deporteId === '' || deporteId.trim() === '') {
+        errors.push('Debe seleccionar un deporte');
+    }
+    
+    if (!lugar.trim()) {
+        errors.push('La ubicación es obligatoria');
+    }
+
+    // Validar máximo de participantes
+    if (maxParticipantes < 1) {
+        errors.push('Debe permitir al menos 1 participante');
+    }
+
+    // Validar fecha y hora
+    const fechaHoraErrors = validateFechaHoraEvento(fechaEvento, horaEvento);
+    errors.push(...fechaHoraErrors);
+
+    return {
+        isValid: errors.length === 0,
+        errors
+    };
+}
+
+export function validateFechaHoraEvento(fechaEvento: Date, horaEvento: Date): string[] {
+    const errors: string[] = [];
+    const ahora = new Date();
+    
+    // 1. No puede ser hoy (debe ser mañana o después)
+    const fechaSoloFecha = new Date(fechaEvento.getFullYear(), fechaEvento.getMonth(), fechaEvento.getDate());
+    const mañana = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 1);
+    
+    if (fechaSoloFecha < mañana) {
+        errors.push('Los eventos deben crearse para mañana en adelante');
+    }
+    
+    // 2. No puede ser más de 1 año en el futuro
+    const unAñoDelante = new Date(ahora);
+    unAñoDelante.setFullYear(unAñoDelante.getFullYear() + 1);
+    if (fechaEvento > unAñoDelante) {
+        errors.push('No se pueden crear eventos con más de un año de anticipación');
+    }
+    
+    // 3. No puede ser entre las 00:00 y 6:59 AM
+    const horaDelEvento = horaEvento.getHours();
+    if (horaDelEvento >= 0 && horaDelEvento < 7) {
+        errors.push('No se pueden crear eventos entre las 00:00 y las 6:59 AM');
+    }
+    
+    return errors;
+}
+
+export function esFechaValida(fecha: Date): boolean {
+    const hoy = new Date();
+    const fechaEvento = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+    const mañana = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+    
+    // La fecha debe ser mañana o futura (no hoy)
+    return fechaEvento >= mañana;
+}
+
+export function esHoraValida(fecha: Date, hora: Date): boolean {
+    // Solo validar que no sea en horario no permitido (00:00 - 6:59)
+    const horaDelEvento = hora.getHours();
+    return horaDelEvento >= 7; // 7 AM en adelante
+}
+
+// Funciones para validaciones específicas de campos
+export function validateFechaEvento(fecha: Date): string | null {
+    const hoy = new Date();
+    
+    // Crear fechas sin hora para comparar solo el día
+    const fechaEvento = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+    const fechaHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+    const mañana = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+    
+    // Solo permitir fechas desde mañana en adelante
+    if (fechaEvento < mañana) {
+        return 'Los eventos deben crearse para mañana en adelante';
+    }
+    
+    const unAñoDelante = new Date(hoy);
+    unAñoDelante.setFullYear(unAñoDelante.getFullYear() + 1);
+    if (fecha > unAñoDelante) {
+        return 'No se pueden crear eventos con más de un año de anticipación';
+    }
+    
+    return null;
+}
+
+export function validateHoraEvento(hora: Date): string | null {
+    const horaDelEvento = hora.getHours();
+    if (horaDelEvento >= 0 && horaDelEvento < 7) {
+        return 'No se pueden crear eventos entre las 00:00 y las 6:59 AM';
+    }
+    return null;
+}
+
+export function validateDeporteEvento(deporteId: string): string | null {
+    if (!deporteId || deporteId === 'undefined' || deporteId === '' || deporteId.trim() === '') {
+        return 'Debe seleccionar un deporte';
+    }
+    return null;
+}
+
+export function validateTituloEvento(titulo: string): string | null {
+    if (!titulo || titulo.trim() === '') {
+        return 'El título del evento es obligatorio';
+    }
+    return null;
+}
+
+export function validateUbicacionEvento(ubicacion: string): string | null {
+    if (!ubicacion || ubicacion.trim() === '') {
+        return 'La ubicación es obligatoria';
+    }
+    return null;
+}

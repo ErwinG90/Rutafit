@@ -1,4 +1,4 @@
-﻿import { View, Text, Pressable, Modal, TextInput, ScrollView, Platform } from "react-native";
+﻿import { View, Text, Pressable, Modal, TextInput, ScrollView, Platform, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
@@ -6,11 +6,12 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState, useEffect } from "react";
 import type { Deporte } from "../../interface/Deporte";
 import { deporteService } from "../../services/DeporteService";
+import { validateEventoForm, esFechaValida, esHoraValida, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento } from "../../src/validators";
 
 export default function EventosScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [nombreEvento, setNombreEvento] = useState("");
-    const [deporteId, setDeporteId] = useState<string | undefined>();
+    const [deporteId, setDeporteId] = useState<string>("");
     const [lugar, setLugar] = useState("");
 
     // Estados para fecha y hora híbrida con DateTimePicker nativo
@@ -22,6 +23,15 @@ export default function EventosScreen() {
     const [maxParticipantes, setMaxParticipantes] = useState(1);
     const [descripcion, setDescripcion] = useState("");
     const [deportes, setDeportes] = useState<Deporte[]>([]);
+    const [erroresValidacion, setErroresValidacion] = useState<string[]>([]);
+    
+    // Estados para errores específicos de campos
+    const [errorFecha, setErrorFecha] = useState<string | null>(null);
+    const [errorHora, setErrorHora] = useState<string | null>(null);
+    const [errorDeporte, setErrorDeporte] = useState<string | null>(null);
+    const [errorTitulo, setErrorTitulo] = useState<string | null>(null);
+    const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null);
+    const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchDeportes = async () => {
@@ -40,6 +50,11 @@ export default function EventosScreen() {
         setMostrarDatePicker(false);
         if (selectedDate) {
             setFechaEvento(selectedDate);
+            // Validar fecha y mostrar error si es necesario
+            const errorFechaValidacion = validateFechaEvento(selectedDate);
+            setErrorFecha(errorFechaValidacion);
+            // Limpiar errores generales
+            setErroresValidacion([]);
         }
     };
 
@@ -47,11 +62,24 @@ export default function EventosScreen() {
         setMostrarTimePicker(false);
         if (selectedTime) {
             setHoraEvento(selectedTime);
+            // Validar hora y mostrar error si es necesario
+            const errorHoraValidacion = validateHoraEvento(selectedTime);
+            setErrorHora(errorHoraValidacion);
+            // Limpiar errores generales
+            setErroresValidacion([]);
         }
     };
 
     const obtenerFechaMinima = (): string => {
-        return new Date().toISOString().split('T')[0];
+        const hoy = new Date();
+        const mañana = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+        return mañana.toISOString().split('T')[0];
+    };
+
+    const obtenerFechaMaxima = (): string => {
+        const unAñoDelante = new Date();
+        unAñoDelante.setFullYear(unAñoDelante.getFullYear() + 1);
+        return unAñoDelante.toISOString().split('T')[0];
     };
 
     const formatearFechaParaMostrar = (fecha: Date): string => {
@@ -79,7 +107,43 @@ export default function EventosScreen() {
         return hora.toTimeString().split(' ')[0].substring(0, 5);
     };
 
+    // Función para crear fecha desde input web (evita problemas de zona horaria)
+    const crearFechaDesdeInputWeb = (fechaString: string): Date => {
+        const [year, month, day] = fechaString.split('-').map(Number);
+        return new Date(year, month - 1, day); // month - 1 porque Date usa 0-based months
+    };
+
     const handleCrearEvento = () => {
+        // Validar campos específicos primero
+        const errorFechaValidacion = validateFechaEvento(fechaEvento);
+        const errorHoraValidacion = validateHoraEvento(horaEvento);
+        const errorDeporteValidacion = validateDeporteEvento(deporteId);
+        const errorTituloValidacion = validateTituloEvento(nombreEvento);
+        const errorUbicacionValidacion = validateUbicacionEvento(lugar);
+        
+        setErrorFecha(errorFechaValidacion);
+        setErrorHora(errorHoraValidacion);
+        setErrorDeporte(errorDeporteValidacion);
+        setErrorTitulo(errorTituloValidacion);
+        setErrorUbicacion(errorUbicacionValidacion);
+        
+        // Validar formulario completo
+        const validationResult = validateEventoForm(
+            nombreEvento,
+            deporteId,
+            lugar,
+            fechaEvento,
+            horaEvento,
+            maxParticipantes,
+            descripcion
+        );
+
+        if (!validationResult.isValid || errorFechaValidacion || errorHoraValidacion || errorDeporteValidacion || errorTituloValidacion || errorUbicacionValidacion) {
+            setErroresValidacion(validationResult.errors);
+            return;
+        }
+
+        // Si todas las validaciones pasan, proceder a crear el evento
         console.log("Crear evento:", {
             nombreEvento,
             deporteId,
@@ -89,17 +153,50 @@ export default function EventosScreen() {
             maxParticipantes,
             descripcion
         });
-        setModalVisible(false);
+        
+        // Limpiar errores
+        setErroresValidacion([]);
+        setErrorFecha(null);
+        setErrorHora(null);
+        setErrorDeporte(null);
+        setErrorTitulo(null);
+        setErrorUbicacion(null);
+        
+        // Mostrar confirmación según la plataforma
+        if (Platform.OS === 'web') {
+            // Mensaje de texto verde en web
+            setMensajeExito("¡Evento creado exitosamente!");
+            // Cerrar modal después de mostrar el mensaje
+            setTimeout(() => {
+                setMensajeExito(null);
+                setModalVisible(false);
+            }, 2500); // 2.5 segundos para ver el mensaje
+        } else {
+            // Cerrar modal inmediatamente en mobile y mostrar alert
+            setModalVisible(false);
+            Alert.alert(
+                "¡Evento creado!",
+                "Tu evento se ha creado exitosamente",
+                [{ text: "OK", style: "default" }]
+            );
+        }
     };
 
     const handleCancelar = () => {
         setNombreEvento("");
-        setDeporteId(undefined);
+        setDeporteId("");
         setLugar("");
         setFechaEvento(new Date());
         setHoraEvento(new Date());
         setMaxParticipantes(1);
         setDescripcion("");
+        setErroresValidacion([]);
+        setErrorFecha(null);
+        setErrorHora(null);
+        setErrorDeporte(null);
+        setErrorTitulo(null);
+        setErrorUbicacion(null);
+        setMensajeExito(null);
         setModalVisible(false);
     };
 
@@ -149,6 +246,17 @@ export default function EventosScreen() {
                                 </Pressable>
                             </View>
 
+                            {/* Mensaje de éxito solo en web */}
+                            {Platform.OS === 'web' && mensajeExito && (
+                                <View className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4">
+                                    <View className="flex-row items-center justify-center">
+                                        <Text className="text-green-800 font-semibold text-center">
+                                            ✅ {mensajeExito}
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
                             <View className="mb-4">
                                 <Text className="text-sm text-gray-700 mb-2">Título del evento</Text>
                                 <TextInput
@@ -156,8 +264,23 @@ export default function EventosScreen() {
                                     placeholder="Ej: Carrera matutina en el parque"
                                     placeholderTextColor="#9ca3af"
                                     value={nombreEvento}
-                                    onChangeText={setNombreEvento}
+                                    onChangeText={(text) => {
+                                        setNombreEvento(text);
+                                        if (erroresValidacion.length > 0) {
+                                            setErroresValidacion([]);
+                                        }
+                                        // Limpiar error de título si hay texto
+                                        if (text.trim() !== "") {
+                                            setErrorTitulo(null);
+                                        }
+                                    }}
                                 />
+                                {/* Error de título */}
+                                {errorTitulo && (
+                                    <Text className="text-red-600 text-sm mt-1">
+                                        {errorTitulo}
+                                    </Text>
+                                )}
                             </View>
 
                             <View className="mb-4">
@@ -165,9 +288,18 @@ export default function EventosScreen() {
                                 <View className="bg-gray-100 rounded-xl border border-gray-200">
                                     <Picker
                                         selectedValue={deporteId}
-                                        onValueChange={(itemValue) => setDeporteId(itemValue)}
+                                        onValueChange={(itemValue) => {
+                                            setDeporteId(itemValue);
+                                            if (erroresValidacion.length > 0) {
+                                                setErroresValidacion([]);
+                                            }
+                                            // Limpiar error de deporte si se selecciona uno válido
+                                            if (itemValue && itemValue !== "") {
+                                                setErrorDeporte(null);
+                                            }
+                                        }}
                                     >
-                                        <Picker.Item label="Selecciona un deporte" value={undefined} />
+                                        <Picker.Item label="Selecciona un deporte" value="" />
                                         {deportes.map((d) => (
                                             <Picker.Item
                                                 key={d._id}
@@ -177,6 +309,12 @@ export default function EventosScreen() {
                                         ))}
                                     </Picker>
                                 </View>
+                                {/* Error de deporte */}
+                                {errorDeporte && (
+                                    <Text className="text-red-600 text-sm mt-1">
+                                        {errorDeporte}
+                                    </Text>
+                                )}
                             </View>
 
                             <View className="mb-4">
@@ -186,8 +324,23 @@ export default function EventosScreen() {
                                     placeholder="Ej: Parque Central, Zona Norte"
                                     placeholderTextColor="#9ca3af"
                                     value={lugar}
-                                    onChangeText={setLugar}
+                                    onChangeText={(text) => {
+                                        setLugar(text);
+                                        if (erroresValidacion.length > 0) {
+                                            setErroresValidacion([]);
+                                        }
+                                        // Limpiar error de ubicación si hay texto
+                                        if (text.trim() !== "") {
+                                            setErrorUbicacion(null);
+                                        }
+                                    }}
                                 />
+                                {/* Error de ubicación */}
+                                {errorUbicacion && (
+                                    <Text className="text-red-600 text-sm mt-1">
+                                        {errorUbicacion}
+                                    </Text>
+                                )}
                             </View>
 
                             <View className="mb-4">
@@ -198,7 +351,16 @@ export default function EventosScreen() {
                                             type="date"
                                             value={fechaParaInputWeb(fechaEvento)}
                                             min={obtenerFechaMinima()}
-                                            onChange={(e) => setFechaEvento(new Date(e.target.value))}
+                                            max={obtenerFechaMaxima()}
+                                            onChange={(e) => {
+                                                const nuevaFecha = crearFechaDesdeInputWeb(e.target.value);
+                                                setFechaEvento(nuevaFecha);
+                                                // Validar y mostrar error si es necesario
+                                                const errorFechaValidacion = validateFechaEvento(nuevaFecha);
+                                                setErrorFecha(errorFechaValidacion);
+                                                // Limpiar errores generales
+                                                setErroresValidacion([]);
+                                            }}
                                             style={{
                                                 width: '100%',
                                                 padding: '8px',
@@ -216,6 +378,12 @@ export default function EventosScreen() {
                                         </Pressable>
                                     )}
                                 </View>
+                                {/* Error de fecha */}
+                                {errorFecha && (
+                                    <Text className="text-red-600 text-sm mt-1">
+                                        {errorFecha}
+                                    </Text>
+                                )}
                             </View>
 
                             <View className="mb-4">
@@ -225,11 +393,19 @@ export default function EventosScreen() {
                                         <input
                                             type="time"
                                             value={horaParaInputWeb(horaEvento)}
+                                            min="07:00"
+                                            max="23:59"
                                             onChange={(e) => {
                                                 const [hours, minutes] = e.target.value.split(':');
                                                 const newTime = new Date(horaEvento);
                                                 newTime.setHours(parseInt(hours), parseInt(minutes));
+                                                
                                                 setHoraEvento(newTime);
+                                                // Validar y mostrar error si es necesario
+                                                const errorHoraValidacion = validateHoraEvento(newTime);
+                                                setErrorHora(errorHoraValidacion);
+                                                // Limpiar errores generales
+                                                setErroresValidacion([]);
                                             }}
                                             style={{
                                                 width: '100%',
@@ -248,6 +424,12 @@ export default function EventosScreen() {
                                         </Pressable>
                                     )}
                                 </View>
+                                {/* Error de hora */}
+                                {errorHora && (
+                                    <Text className="text-red-600 text-sm mt-1">
+                                        {errorHora}
+                                    </Text>
+                                )}
                             </View>
 
                             <View className="mb-4">
@@ -259,6 +441,9 @@ export default function EventosScreen() {
                                         onChangeText={(text) => {
                                             const num = parseInt(text) || 1;
                                             setMaxParticipantes(num > 0 ? num : 1);
+                                            if (erroresValidacion.length > 0) {
+                                                setErroresValidacion([]);
+                                            }
                                         }}
                                         keyboardType="numeric"
                                         selectTextOnFocus={true}
