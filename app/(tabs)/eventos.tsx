@@ -1,204 +1,57 @@
-﻿import { View, Text, Pressable, Modal, TextInput, ScrollView, Platform, Alert } from "react-native";
+import { View, Text, Pressable, Modal, TextInput, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState, useEffect } from "react";
+import axios from "axios";
 import type { Deporte } from "../../interface/Deporte";
 import { deporteService } from "../../services/DeporteService";
-import { validateEventoForm, esFechaValida, esHoraValida, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento } from "../../src/validators";
 
 export default function EventosScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [nombreEvento, setNombreEvento] = useState("");
-    const [deporteId, setDeporteId] = useState<string>("");
+    const [deporteId, setDeporteId] = useState<string | undefined>();
     const [lugar, setLugar] = useState("");
-
-    // Estados para fecha y hora híbrida con DateTimePicker nativo
-    const [fechaEvento, setFechaEvento] = useState(new Date());
-    const [horaEvento, setHoraEvento] = useState(new Date());
-    const [mostrarDatePicker, setMostrarDatePicker] = useState(false);
-    const [mostrarTimePicker, setMostrarTimePicker] = useState(false);
-
+    const [fecha, setFecha] = useState("");
+    const [hora, setHora] = useState("");
     const [maxParticipantes, setMaxParticipantes] = useState(1);
     const [descripcion, setDescripcion] = useState("");
+
+    // Estados para deportes dinámicos
     const [deportes, setDeportes] = useState<Deporte[]>([]);
-    const [erroresValidacion, setErroresValidacion] = useState<string[]>([]);
 
-    // Estados para errores específicos de campos
-    const [errorFecha, setErrorFecha] = useState<string | null>(null);
-    const [errorHora, setErrorHora] = useState<string | null>(null);
-    const [errorDeporte, setErrorDeporte] = useState<string | null>(null);
-    const [errorTitulo, setErrorTitulo] = useState<string | null>(null);
-    const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null);
-    const [mensajeExito, setMensajeExito] = useState<string | null>(null);
-
+    // ---- Fetch deportes al montar ----
     useEffect(() => {
         const fetchDeportes = async () => {
-            try {
-                const deportesRes = await deporteService.getDeportes();
-                setDeportes(deportesRes);
-            } catch (error) {
-                console.log("Error:", error);
-            }
+            const deportesRes = await deporteService.getDeportes();
+            setDeportes(deportesRes);
         };
         fetchDeportes();
     }, []);
 
-    // Funciones para manejar DateTimePicker
-    const onCambiarFecha = (event: any, selectedDate?: Date) => {
-        setMostrarDatePicker(false);
-        if (selectedDate) {
-            setFechaEvento(selectedDate);
-            // Validar fecha y mostrar error si es necesario
-            const errorFechaValidacion = validateFechaEvento(selectedDate);
-            setErrorFecha(errorFechaValidacion);
-            // Limpiar errores generales
-            setErroresValidacion([]);
-        }
-    };
-
-    const onCambiarHora = (event: any, selectedTime?: Date) => {
-        setMostrarTimePicker(false);
-        if (selectedTime) {
-            setHoraEvento(selectedTime);
-            // Validar hora y mostrar error si es necesario
-            const errorHoraValidacion = validateHoraEvento(selectedTime);
-            setErrorHora(errorHoraValidacion);
-            // Limpiar errores generales
-            setErroresValidacion([]);
-        }
-    };
-
-    const obtenerFechaMinima = (): string => {
-        const hoy = new Date();
-        const mañana = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
-        return mañana.toISOString().split('T')[0];
-    };
-
-    const obtenerFechaMaxima = (): string => {
-        const unAñoDelante = new Date();
-        unAñoDelante.setFullYear(unAñoDelante.getFullYear() + 1);
-        return unAñoDelante.toISOString().split('T')[0];
-    };
-
-    const formatearFechaParaMostrar = (fecha: Date): string => {
-        return fecha.toLocaleDateString('es-ES', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
-
-    const formatearHoraParaMostrar = (hora: Date): string => {
-        return hora.toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
-
-    // Funciones para convertir Date a string para inputs web
-    const fechaParaInputWeb = (fecha: Date): string => {
-        return fecha.toISOString().split('T')[0];
-    };
-
-    const horaParaInputWeb = (hora: Date): string => {
-        return hora.toTimeString().split(' ')[0].substring(0, 5);
-    };
-
-    // Función para crear fecha desde input web (evita problemas de zona horaria)
-    const crearFechaDesdeInputWeb = (fechaString: string): Date => {
-        const [year, month, day] = fechaString.split('-').map(Number);
-        return new Date(year, month - 1, day); // month - 1 porque Date usa 0-based months
-    };
-
     const handleCrearEvento = () => {
-        // Validar campos específicos primero
-        const errorFechaValidacion = validateFechaEvento(fechaEvento);
-        const errorHoraValidacion = validateHoraEvento(horaEvento);
-        const errorDeporteValidacion = validateDeporteEvento(deporteId);
-        const errorTituloValidacion = validateTituloEvento(nombreEvento);
-        const errorUbicacionValidacion = validateUbicacionEvento(lugar);
-
-        // Validar formulario completo
-        const validationResult = validateEventoForm(
-            nombreEvento,
-            deporteId,
-            lugar,
-            fechaEvento,
-            horaEvento,
-            maxParticipantes,
-            descripcion
-        );
-
-        // Actualizar estados de error
-        setErrorFecha(errorFechaValidacion);
-        setErrorHora(errorHoraValidacion);
-        setErrorDeporte(errorDeporteValidacion);
-        setErrorTitulo(errorTituloValidacion);
-        setErrorUbicacion(errorUbicacionValidacion);
-        setErroresValidacion(validationResult.errors);
-
-        // Verificar si hay errores después de actualizar estados
-        if (!validationResult.isValid || errorFechaValidacion || errorHoraValidacion || errorDeporteValidacion || errorTituloValidacion || errorUbicacionValidacion) {
-            return; // Detener ejecución si hay errores
-        }
-
-        // Si todas las validaciones pasan, proceder a crear el evento
+        // Aquí implementarás la lógica para crear el evento
         console.log("Crear evento:", {
             nombreEvento,
             deporteId,
             lugar,
-            fecha: fechaParaInputWeb(fechaEvento), // YYYY-MM-DD
-            hora: horaParaInputWeb(horaEvento), // HH:MM
+            fecha,
+            hora,
             maxParticipantes,
             descripcion
         });
-
-        // Limpiar errores
-        setErroresValidacion([]);
-        setErrorFecha(null);
-        setErrorHora(null);
-        setErrorDeporte(null);
-        setErrorTitulo(null);
-        setErrorUbicacion(null);
-
-        // Mostrar confirmación según la plataforma
-        if (Platform.OS === 'web') {
-            // Mensaje de texto verde en web
-            setMensajeExito("¡Evento creado exitosamente!");
-            // Cerrar modal después de mostrar el mensaje
-            setTimeout(() => {
-                setMensajeExito(null);
-                setModalVisible(false);
-            }, 2500); // 2.5 segundos para ver el mensaje
-        } else {
-            // Cerrar modal inmediatamente en mobile y mostrar alert
-            setModalVisible(false);
-            Alert.alert(
-                "¡Evento creado!",
-                "Tu evento se ha creado exitosamente",
-                [{ text: "OK", style: "default" }]
-            );
-        }
+        setModalVisible(false);
     };
 
     const handleCancelar = () => {
+        // Limpiar campos
         setNombreEvento("");
-        setDeporteId("");
+        setDeporteId(undefined);
         setLugar("");
-        setFechaEvento(new Date());
-        setHoraEvento(new Date());
+        setFecha("");
+        setHora("");
         setMaxParticipantes(1);
         setDescripcion("");
-        setErroresValidacion([]);
-        setErrorFecha(null);
-        setErrorHora(null);
-        setErrorDeporte(null);
-        setErrorTitulo(null);
-        setErrorUbicacion(null);
-        setMensajeExito(null);
         setModalVisible(false);
     };
 
@@ -207,321 +60,183 @@ export default function EventosScreen() {
     };
 
     const decrementarParticipantes = () => {
-        setMaxParticipantes(prev => Math.max(1, prev - 1));
+        setMaxParticipantes(prev => prev > 1 ? prev - 1 : 1);
     };
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
+        <SafeAreaView className="flex-1 bg-background">
+            {/* Header con botón Crear */}
             <View className="flex-row justify-between items-center px-6 py-4">
-                <View>
-                    <Text className="text-3xl font-bold text-green-500 drop-shadow-lg">Rutafit</Text>
-                    <Text className="text-sm text-black-500 mt-1">Únete o crea eventos deportivos</Text>
+                <View className="flex-1">
+                    <Text className="text-primary text-2xl font-semibold drop-shadow">Eventos</Text>
+                    <Text className="text-text text-sm mt-1">Únete o crea eventos deportivos</Text>
                 </View>
                 <Pressable
                     onPress={() => setModalVisible(true)}
-                    className="bg-primary rounded-full px-4 py-2 flex-row items-center"
+                    className="bg-primary rounded-xl px-4 py-2 flex-row items-center"
                 >
                     <Ionicons name="add" size={20} color="white" />
                     <Text className="text-white font-semibold ml-1">Crear</Text>
                 </Pressable>
             </View>
 
-            <View className="flex-1 px-6">
-                <Text className="text-gray-400 text-center mt-20">
-                    Cargando Eventos.....
-                </Text>
+            {/* Contenido principal */}
+            <View className="flex-1 items-center justify-center">
+                <Text className="text-text text-xl mb-6">Lista de eventos aquí...</Text>
             </View>
 
+            {/* Modal para crear evento */}
             <Modal
-                visible={modalVisible}
                 animationType="slide"
-                presentationStyle="pageSheet"
-                onRequestClose={handleCancelar}
+                transparent={true}
+                visible={modalVisible}
+                onRequestClose={() => setModalVisible(false)}
             >
-                <SafeAreaView className="flex-1 bg-white">
-                    <ScrollView className="flex-1">
-                        <View className="px-6 py-4">
-                            <View className="flex-row justify-between items-center mb-6">
-                                <Text className="text-xl font-bold text-gray-900">Crear Nuevo Evento</Text>
-                                <Pressable onPress={handleCancelar}>
-                                    <Ionicons name="close" size={24} color="#6b7280" />
-                                </Pressable>
-                            </View>
-
-                            {/* Mensaje de éxito solo en web */}
-                            {Platform.OS === 'web' && mensajeExito && (
-                                <View className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4">
-                                    <View className="flex-row items-center justify-center">
-                                        <Text className="text-green-800 font-semibold text-center">
-                                            ✅ {mensajeExito}
-                                        </Text>
-                                    </View>
+                <View className="flex-1 justify-center items-center bg-black/50">
+                    <View className="bg-white rounded-2xl w-11/12 max-h-5/6">
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <View className="p-6">
+                                {/* Header del modal */}
+                                <View className="flex-row justify-between items-center mb-6">
+                                    <Text className="text-xl font-bold text-gray-900">Crear Nuevo Evento</Text>
+                                    <Pressable onPress={handleCancelar}>
+                                        <Ionicons name="close" size={24} color="#6b7280" />
+                                    </Pressable>
                                 </View>
-                            )}
 
-                            <View className="mb-4">
-                                <Text className="text-sm text-gray-700 mb-2">Título del evento</Text>
-                                <TextInput
-                                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
-                                    placeholder="Ej: Carrera matutina en el parque"
-                                    placeholderTextColor="#9ca3af"
-                                    value={nombreEvento}
-                                    onChangeText={(text) => {
-                                        setNombreEvento(text);
-                                        if (erroresValidacion.length > 0) {
-                                            setErroresValidacion([]);
-                                        }
-                                        // Limpiar error de título si hay texto válido
-                                        if (text.trim() !== "" && errorTitulo) {
-                                            const errorTituloValidacion = validateTituloEvento(text);
-                                            if (!errorTituloValidacion) {
-                                                setErrorTitulo(null);
-                                            }
-                                        }
-                                    }}
-                                />
-                                {/* Error de título */}
-                                {errorTitulo && (
-                                    <Text className="text-red-600 text-sm mt-1">
-                                        {errorTitulo}
-                                    </Text>
-                                )}
-                            </View>
-
-                            <View className="mb-4">
-                                <Text className="text-sm text-gray-700 mb-2">Deporte</Text>
-                                <View className="bg-gray-100 rounded-xl border border-gray-200">
-                                    <Picker
-                                        selectedValue={deporteId}
-                                        onValueChange={(itemValue) => {
-                                            setDeporteId(itemValue);
-                                            if (erroresValidacion.length > 0) {
-                                                setErroresValidacion([]);
-                                            }
-                                            // Limpiar error de deporte si se selecciona uno válido
-                                            if (itemValue && itemValue !== "") {
-                                                setErrorDeporte(null);
-                                            }
-                                        }}
-                                    >
-                                        <Picker.Item label="Selecciona un deporte" value="" />
-                                        {deportes.map((d) => (
-                                            <Picker.Item
-                                                key={d._id}
-                                                label={d.nombre}
-                                                value={d._id}
-                                            />
-                                        ))}
-                                    </Picker>
-                                </View>
-                                {/* Error de deporte */}
-                                {errorDeporte && (
-                                    <Text className="text-red-600 text-sm mt-1">
-                                        {errorDeporte}
-                                    </Text>
-                                )}
-                            </View>
-
-                            <View className="mb-4">
-                                <Text className="text-sm text-gray-700 mb-2">Ubicación</Text>
-                                <TextInput
-                                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
-                                    placeholder="Ej: Parque Central, Zona Norte"
-                                    placeholderTextColor="#9ca3af"
-                                    value={lugar}
-                                    onChangeText={(text) => {
-                                        setLugar(text);
-                                        if (erroresValidacion.length > 0) {
-                                            setErroresValidacion([]);
-                                        }
-                                        // Limpiar error de ubicación si hay texto
-                                        if (text.trim() !== "") {
-                                            setErrorUbicacion(null);
-                                        }
-                                    }}
-                                />
-                                {/* Error de ubicación */}
-                                {errorUbicacion && (
-                                    <Text className="text-red-600 text-sm mt-1">
-                                        {errorUbicacion}
-                                    </Text>
-                                )}
-                            </View>
-
-                            <View className="mb-4">
-                                <Text className="text-sm text-gray-700 mb-2">Fecha del evento</Text>
-                                <View className="bg-gray-100 rounded-xl px-4 py-3">
-                                    {Platform.OS === 'web' ? (
-                                        <input
-                                            type="date"
-                                            value={fechaParaInputWeb(fechaEvento)}
-                                            min={obtenerFechaMinima()}
-                                            max={obtenerFechaMaxima()}
-                                            onChange={(e) => {
-                                                const nuevaFecha = crearFechaDesdeInputWeb(e.target.value);
-                                                setFechaEvento(nuevaFecha);
-                                                // Validar y mostrar error si es necesario
-                                                const errorFechaValidacion = validateFechaEvento(nuevaFecha);
-                                                setErrorFecha(errorFechaValidacion);
-                                                // Limpiar errores generales
-                                                setErroresValidacion([]);
-                                            }}
-                                            style={{
-                                                width: '100%',
-                                                padding: '8px',
-                                                border: 'none',
-                                                background: 'transparent',
-                                                fontSize: '16px',
-                                                color: '#374151'
-                                            }}
-                                        />
-                                    ) : (
-                                        <Pressable onPress={() => setMostrarDatePicker(true)}>
-                                            <Text className="text-gray-900 py-1">
-                                                📅 {formatearFechaParaMostrar(fechaEvento)}
-                                            </Text>
-                                        </Pressable>
-                                    )}
-                                </View>
-                                {/* Error de fecha */}
-                                {errorFecha && (
-                                    <Text className="text-red-600 text-sm mt-1">
-                                        {errorFecha}
-                                    </Text>
-                                )}
-                            </View>
-
-                            <View className="mb-4">
-                                <Text className="text-sm text-gray-700 mb-2">Hora del evento</Text>
-                                <View className="bg-gray-100 rounded-xl px-4 py-3">
-                                    {Platform.OS === 'web' ? (
-                                        <input
-                                            type="time"
-                                            value={horaParaInputWeb(horaEvento)}
-                                            min="07:00"
-                                            max="23:59"
-                                            onChange={(e) => {
-                                                const [hours, minutes] = e.target.value.split(':');
-                                                const newTime = new Date(horaEvento);
-                                                newTime.setHours(parseInt(hours), parseInt(minutes));
-
-                                                setHoraEvento(newTime);
-                                                // Validar y mostrar error si es necesario
-                                                const errorHoraValidacion = validateHoraEvento(newTime);
-                                                setErrorHora(errorHoraValidacion);
-                                                // Limpiar errores generales
-                                                setErroresValidacion([]);
-                                            }}
-                                            style={{
-                                                width: '100%',
-                                                padding: '8px',
-                                                border: 'none',
-                                                background: 'transparent',
-                                                fontSize: '16px',
-                                                color: '#374151'
-                                            }}
-                                        />
-                                    ) : (
-                                        <Pressable onPress={() => setMostrarTimePicker(true)}>
-                                            <Text className="text-gray-900 py-1">
-                                                ⏰ {formatearHoraParaMostrar(horaEvento)}
-                                            </Text>
-                                        </Pressable>
-                                    )}
-                                </View>
-                                {/* Error de hora */}
-                                {errorHora && (
-                                    <Text className="text-red-600 text-sm mt-1">
-                                        {errorHora}
-                                    </Text>
-                                )}
-                            </View>
-
-                            <View className="mb-4">
-                                <Text className="text-sm text-gray-700 mb-2">Máximo de participantes</Text>
-                                <View className="flex-row items-center">
+                                {/* Título del evento */}
+                                <View className="mb-4">
+                                    <Text className="text-sm text-gray-700 mb-2">Título del evento</Text>
                                     <TextInput
-                                        className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
-                                        value={maxParticipantes.toString()}
-                                        onChangeText={(text) => {
-                                            const num = parseInt(text) || 1;
-                                            setMaxParticipantes(num > 0 ? num : 1);
-                                            if (erroresValidacion.length > 0) {
-                                                setErroresValidacion([]);
-                                            }
-                                        }}
-                                        keyboardType="numeric"
-                                        selectTextOnFocus={true}
+                                        className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
+                                        placeholder="Ej: Carrera matutina en el parque"
+                                        placeholderTextColor="#9ca3af"
+                                        value={nombreEvento}
+                                        onChangeText={setNombreEvento}
                                     />
-                                    <View className="ml-1">
-                                        <Pressable
-                                            onPress={incrementarParticipantes}
-                                            className="bg-gray-200 px-2 py-0.5 rounded-t-md border border-gray-300"
+                                </View>
+
+                                {/* Deporte */}
+                                <View className="mb-4">
+                                    <Text className="text-sm text-gray-700 mb-2">Deporte</Text>
+                                    <View className="bg-gray-100 rounded-xl border border-gray-200">
+                                        <Picker
+                                            selectedValue={deporteId}
+                                            onValueChange={(itemValue) => setDeporteId(itemValue)}
                                         >
-                                            <Ionicons name="chevron-up" size={12} color="#374151" />
-                                        </Pressable>
-                                        <Pressable
-                                            onPress={decrementarParticipantes}
-                                            className="bg-gray-200 px-2 py-0.5 rounded-b-md border border-gray-300 border-t-0"
-                                        >
-                                            <Ionicons name="chevron-down" size={12} color="#374151" />
-                                        </Pressable>
+                                            <Picker.Item label="Selecciona un deporte" value={undefined} />
+                                            {deportes.map((d) => (
+                                                <Picker.Item
+                                                    key={d._id}
+                                                    label={d.nombre}
+                                                    value={d._id}
+                                                />
+                                            ))}
+                                        </Picker>
                                     </View>
                                 </View>
-                            </View>
 
-                            <View className="mb-6">
-                                <Text className="text-sm text-gray-700 mb-2">Descripción</Text>
-                                <TextInput
-                                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
-                                    placeholder="Describe tu evento (opcional)"
-                                    placeholderTextColor="#9ca3af"
-                                    value={descripcion}
-                                    onChangeText={setDescripcion}
-                                    multiline
-                                    numberOfLines={3}
-                                    textAlignVertical="top"
-                                />
-                            </View>
+                                {/* Ubicación */}
+                                <View className="mb-4">
+                                    <Text className="text-sm text-gray-700 mb-2">Ubicación</Text>
+                                    <TextInput
+                                        className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
+                                        placeholder="Ej: Parque Central, Zona Norte"
+                                        placeholderTextColor="#9ca3af"
+                                        value={lugar}
+                                        onChangeText={setLugar}
+                                    />
+                                </View>
 
-                            <View className="flex-row gap-3">
-                                <Pressable
-                                    onPress={handleCancelar}
-                                    className="flex-1 bg-red-500 rounded-xl py-3 items-center"
-                                >
-                                    <Text className="text-white font-semibold">Cancelar</Text>
-                                </Pressable>
-                                <Pressable
-                                    onPress={handleCrearEvento}
-                                    className="flex-1 bg-primary rounded-xl py-3 items-center"
-                                >
-                                    <Text className="text-white font-semibold">Crear Evento</Text>
-                                </Pressable>
+                                {/* Fecha y Hora */}
+                                <View className="flex-row gap-3 mb-4">
+                                    <View className="flex-1">
+                                        <Text className="text-sm text-gray-700 mb-2">Fecha</Text>
+                                        <TextInput
+                                            className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
+                                            placeholder="dd-mm-aaaa"
+                                            placeholderTextColor="#9ca3af"
+                                            value={fecha}
+                                            onChangeText={setFecha}
+                                        />
+                                    </View>
+                                    <View className="flex-1">
+                                        <Text className="text-sm text-gray-700 mb-2">Hora</Text>
+                                        <TextInput
+                                            className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
+                                            placeholder="--:--"
+                                            placeholderTextColor="#9ca3af"
+                                            value={hora}
+                                            onChangeText={setHora}
+                                        />
+                                    </View>
+                                </View>
+
+                                {/* Máximo de participantes */}
+                                <View className="mb-4">
+                                    <Text className="text-sm text-gray-700 mb-2">Máximo de participantes</Text>
+                                    <View className="flex-row items-center">
+                                        <TextInput
+                                            className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
+                                            value={maxParticipantes.toString()}
+                                            onChangeText={(text) => {
+                                                const num = parseInt(text) || 1;
+                                                setMaxParticipantes(num > 0 ? num : 1);
+                                            }}
+                                            keyboardType="numeric"
+                                            selectTextOnFocus={true}
+                                        />
+                                        <View className="ml-1">
+                                            <Pressable
+                                                onPress={incrementarParticipantes}
+                                                className="bg-gray-200 px-2 py-0.5 rounded-t-md border border-gray-300"
+                                            >
+                                                <Ionicons name="chevron-up" size={12} color="#374151" />
+                                            </Pressable>
+                                            <Pressable
+                                                onPress={decrementarParticipantes}
+                                                className="bg-gray-200 px-2 py-0.5 rounded-b-md border border-gray-300 border-t-0"
+                                            >
+                                                <Ionicons name="chevron-down" size={12} color="#374151" />
+                                            </Pressable>
+                                        </View>
+                                    </View>
+                                </View>
+
+                                {/* Descripción */}
+                                <View className="mb-6">
+                                    <Text className="text-sm text-gray-700 mb-2">Descripción (opcional)</Text>
+                                    <TextInput
+                                        className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 h-20"
+                                        placeholder="Describe los detalles del evento..."
+                                        placeholderTextColor="#9ca3af"
+                                        value={descripcion}
+                                        onChangeText={setDescripcion}
+                                        multiline={true}
+                                        textAlignVertical="top"
+                                    />
+                                </View>
+
+                                {/* Botones */}
+                                <View className="flex-row gap-3">
+                                    <Pressable
+                                        onPress={handleCrearEvento}
+                                        className="flex-1 bg-primary rounded-xl py-3 items-center"
+                                    >
+                                        <Text className="text-white font-semibold">Crear Evento</Text>
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={handleCancelar}
+                                        className="flex-1 bg-gray-200 rounded-xl py-3 items-center"
+                                    >
+                                        <Text className="text-gray-700 font-semibold">Cancelar</Text>
+                                    </Pressable>
+                                </View>
                             </View>
-                        </View>
-                    </ScrollView>
-                </SafeAreaView>
+                        </ScrollView>
+                    </View>
+                </View>
             </Modal>
-
-            {/* DateTimePickers nativos para móvil */}
-            {mostrarDatePicker && Platform.OS !== 'web' && (
-                <DateTimePicker
-                    value={fechaEvento}
-                    mode="date"
-                    display="default"
-                    minimumDate={new Date()}
-                    onChange={onCambiarFecha}
-                />
-            )}
-
-            {mostrarTimePicker && Platform.OS !== 'web' && (
-                <DateTimePicker
-                    value={horaEvento}
-                    mode="time"
-                    display="default"
-                    onChange={onCambiarHora}
-                />
-            )}
         </SafeAreaView>
     );
 }

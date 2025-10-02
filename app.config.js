@@ -17,10 +17,6 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      infoPlist: {
-        NSLocationWhenInUseUsageDescription:
-          "RutaFit usa tu ubicación para mostrar mapas y eventos cerca de ti.",
-      },
     },
     android: {
       adaptiveIcon: {
@@ -29,22 +25,12 @@ export default {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
-      permissions: ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
     },
     web: {
       favicon: "./assets/favicon.png",
       bundler: "metro",
     },
-    plugins: [
-      "expo-router",
-      [
-        "expo-location",
-        {
-          locationWhenInUsePermission:
-            "RutaFit necesita tu ubicación para mostrar el mapa y eventos cercanos.",
-        },
-      ],
-    ],
+    plugins: ["expo-router"],
 
     // Variables públicas de Firebase (se incrustan en el cliente)
     extra: {

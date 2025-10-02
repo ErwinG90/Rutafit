@@ -6,10 +6,6 @@ import { useRouter, Link } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../src/firebaseConfig";
 import { validateEmail, validatePassword } from "../../src/validators";
-import axios from "axios";
-import { saveProfile } from "../../src/storage/localCache";
-
-const API_BASE = "https://ms-rutafit-neg.vercel.app/ms-rutafit-neg";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -42,8 +38,10 @@ export default function LoginScreen() {
       return "Correo o contraseña inválidos.";
     }
     if (code === "auth/invalid-email") return "El correo no es válido.";
-    if (code === "auth/too-many-requests") return "Demasiados intentos. Intenta más tarde.";
-    if (code === "auth/network-request-failed") return "Sin conexión. Revisa tu internet.";
+    if (code === "auth/too-many-requests")
+      return "Demasiados intentos. Intenta más tarde.";
+    if (code === "auth/network-request-failed")
+      return "Sin conexión. Revisa tu internet.";
     return "No se pudo iniciar sesión.";
   }
 
@@ -52,26 +50,7 @@ export default function LoginScreen() {
     setSubmitting(true);
     setFormError(null);
     try {
-      // 1) Firebase Login
       await signInWithEmailAndPassword(auth, email.trim(), pw);
-
-      // 2) Tomar uid y pedir perfil a la API
-      const uid = auth.currentUser?.uid;
-      if (uid) {
-        try {
-          const { data } = await axios.get(`${API_BASE}/users/${uid}`);
-          // 3) Guardar en cache local
-          await saveProfile({
-            ...data,
-            updatedAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          console.log("WARN fetch/cache profile:", err);
-          // si falla, igual navegamos; la app puede reintentar luego
-        }
-      }
-
-      // 4) Ir a tabs
       router.replace("/(tabs)");
     } catch (e: any) {
       setFormError(prettyError(e));
@@ -156,7 +135,9 @@ export default function LoginScreen() {
         {/* Botón Entrar */}
         <View className="mt-4">
           <Pressable
-            className={`rounded-2xl px-6 py-3 items-center ${canSubmit ? "bg-primary" : "bg-primary/50"}`}
+            className={`rounded-2xl px-6 py-3 items-center ${
+              canSubmit ? "bg-primary" : "bg-primary/50"
+            }`}
             disabled={!canSubmit}
             onPress={onSubmit}
           >
@@ -166,10 +147,12 @@ export default function LoginScreen() {
           </Pressable>
         </View>
 
-        {/* Enlaces */}
+        {/* Enlaces auxiliares */}
         <View className="mt-6 items-center">
           <Link href="/(auth)/Register">
-            <Text className="text-primary font-semibold">¿No tienes cuenta? Regístrate</Text>
+            <Text className="text-primary font-semibold">
+              ¿No tienes cuenta? Regístrate
+            </Text>
           </Link>
         </View>
 
