@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import type { Deporte } from "../../interface/Deporte";
 import { deporteService } from "../../services/DeporteService";
 import { eventoService } from '../../services/EventoService';
+import { getProfile } from '../../src/storage/localCache';
 import { validateEventoForm, prepararFechaHoraCombinada, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento } from "../../src/validators";
 
 export default function EventosScreen() {
@@ -146,14 +147,32 @@ export default function EventosScreen() {
             return; // Detener ejecución si hay errores
         }
 
+        // Obtener usuario del caché
+        const userProfile = await getProfile();
+        console.log("Profile from cache:", userProfile); //TEMPORAL para debug
+        const userId = userProfile?.uid;
+
+        if (!userId) {
+            if (Platform.OS === 'web') {
+                alert('Error: No se pudo identificar el usuario');
+            } else {
+                Alert.alert('Error', 'No se pudo identificar el usuario');
+            }
+            return;
+        }
+
+
         // Preparar datos para enviar
         const datosEvento = {
-            titulo: nombreEvento,
+            nombre_evento: nombreEvento,
             deporte_id: deporteId,
-            ubicacion: lugar,
-            fechaHora: prepararFechaHoraCombinada(fechaEvento, horaEvento),
+            lugar: lugar,
+            fecha_evento: prepararFechaHoraCombinada(fechaEvento, horaEvento),
             max_participantes: maxParticipantes,
-            descripcion: descripcion
+            descripcion: descripcion,
+            createdBy: userId,
+            participantes: [], // lista de participantes vacia al crear
+            estado: "programado"
         };
 
         console.log("Crear evento:", datosEvento);
