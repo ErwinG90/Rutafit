@@ -69,8 +69,8 @@ export function validateEventoForm(
     }
 
     // Validar máximo de participantes
-    if (maxParticipantes < 1) {
-        errors.push('Debe permitir al menos 1 participante');
+    if (maxParticipantes < 1 || maxParticipantes > 100) {
+        errors.push('Debe permitir al menos 1 participante y un máximo de 100');
     }
 
     // Validar fecha y hora
@@ -195,4 +195,11 @@ export const prepararFechaHoraCombinada = (fechaEvento: any, horaEvento: any) =>
     }
 
     return new Date(`${fechaString}T${horaString}:00`);
+};
+
+export const validateParticipantesEvento = (maxParticipantes: number): string | null => {
+    if (maxParticipantes < 1 || maxParticipantes > 100) {
+        return 'Debe permitir entre 1 y máximo 100 participantes';
+    }
+    return null;
 };
