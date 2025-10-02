@@ -6,7 +6,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState, useEffect } from "react";
 import type { Deporte } from "../../interface/Deporte";
 import { deporteService } from "../../services/DeporteService";
-import { validateEventoForm, esFechaValida, esHoraValida, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento } from "../../src/validators";
+import { eventoService } from '../../services/EventoService';
+import { validateEventoForm, prepararFechaHoraCombinada, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento } from "../../src/validators";
 
 export default function EventosScreen() {
     const [modalVisible, setModalVisible] = useState(false);
@@ -113,7 +114,7 @@ export default function EventosScreen() {
         return new Date(year, month - 1, day); // month - 1 porque Date usa 0-based months
     };
 
-    const handleCrearEvento = () => {
+    const handleCrearEvento = async () => {
         // Validar campos específicos primero
         const errorFechaValidacion = validateFechaEvento(fechaEvento);
         const errorHoraValidacion = validateHoraEvento(horaEvento);
@@ -145,42 +146,63 @@ export default function EventosScreen() {
             return; // Detener ejecución si hay errores
         }
 
-        // Si todas las validaciones pasan, proceder a crear el evento
-        console.log("Crear evento:", {
-            nombreEvento,
-            deporteId,
-            lugar,
-            fecha: fechaParaInputWeb(fechaEvento), // YYYY-MM-DD
-            hora: horaParaInputWeb(horaEvento), // HH:MM
-            maxParticipantes,
-            descripcion
-        });
+        // Preparar datos para enviar
+        const datosEvento = {
+            titulo: nombreEvento,
+            deporte_id: deporteId,
+            ubicacion: lugar,
+            fechaHora: prepararFechaHoraCombinada(fechaEvento, horaEvento),
+            max_participantes: maxParticipantes,
+            descripcion: descripcion
+        };
 
-        // Limpiar errores
-        setErroresValidacion([]);
-        setErrorFecha(null);
-        setErrorHora(null);
-        setErrorDeporte(null);
-        setErrorTitulo(null);
-        setErrorUbicacion(null);
+        console.log("Crear evento:", datosEvento);
 
-        // Mostrar confirmación según la plataforma
-        if (Platform.OS === 'web') {
-            // Mensaje de texto verde en web
-            setMensajeExito("¡Evento creado exitosamente!");
-            // Cerrar modal después de mostrar el mensaje
-            setTimeout(() => {
-                setMensajeExito(null);
+        // Enviar datos a la API
+        try {
+            await eventoService.crearEvento(datosEvento);
+
+            // Si llega aquí, fue exitoso
+            // Limpiar errores
+            setErroresValidacion([]);
+            setErrorFecha(null);
+            setErrorHora(null);
+            setErrorDeporte(null);
+            setErrorTitulo(null);
+            setErrorUbicacion(null);
+
+            // Mostrar confirmación según la plataforma
+            if (Platform.OS === 'web') {
+                // Mensaje de texto verde en web
+                setMensajeExito("¡Evento creado exitosamente!");
+                // Cerrar modal después de mostrar el mensaje
+                setTimeout(() => {
+                    setMensajeExito(null);
+                    setModalVisible(false);
+                }, 2500); // 2.5 segundos para ver el mensaje
+            } else {
+                // Cerrar modal inmediatamente en mobile y mostrar alert
                 setModalVisible(false);
-            }, 2500); // 2.5 segundos para ver el mensaje
-        } else {
-            // Cerrar modal inmediatamente en mobile y mostrar alert
-            setModalVisible(false);
-            Alert.alert(
-                "¡Evento creado!",
-                "Tu evento se ha creado exitosamente",
-                [{ text: "OK", style: "default" }]
-            );
+                Alert.alert(
+                    "¡Evento creado!",
+                    "Tu evento se ha creado exitosamente",
+                    [{ text: "OK", style: "default" }]
+                );
+            }
+
+        } catch (error) {
+            console.error("Error creando evento:", error);
+
+            // Mostrar error al usuario
+            if (Platform.OS === 'web') {
+                alert('Error al crear evento. Inténtalo de nuevo.');
+            } else {
+                Alert.alert(
+                    "Error",
+                    "No se pudo crear el evento. Inténtalo de nuevo.",
+                    [{ text: "OK", style: "default" }]
+                );
+            }
         }
     };
 
@@ -378,7 +400,8 @@ export default function EventosScreen() {
                                     ) : (
                                         <Pressable onPress={() => setMostrarDatePicker(true)}>
                                             <Text className="text-gray-900 py-1">
-                                                📅 {formatearFechaParaMostrar(fechaEvento)}
+                                                < Ionicons name="calendar-outline" size={20} color="#111827" />
+                                                {formatearFechaParaMostrar(fechaEvento)}
                                             </Text>
                                         </Pressable>
                                     )}
@@ -424,7 +447,8 @@ export default function EventosScreen() {
                                     ) : (
                                         <Pressable onPress={() => setMostrarTimePicker(true)}>
                                             <Text className="text-gray-900 py-1">
-                                                ⏰ {formatearHoraParaMostrar(horaEvento)}
+                                                <Ionicons name="time-outline" size={20} color="#111827" />
+                                                {formatearHoraParaMostrar(horaEvento)}
                                             </Text>
                                         </Pressable>
                                     )}

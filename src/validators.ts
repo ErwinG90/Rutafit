@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 // palabra@palabra.com | palabra@palabra.cl
 const EMAIL_REGEX = /^[A-Za-z][A-Za-z0-9._%+-]*@[A-Za-z][A-Za-z0-9-]*\.(com|cl)$/i;
 // mínimo 6, al menos 1 minúscula y 1 MAYÚSCULA
@@ -180,3 +182,17 @@ export function validateUbicacionEvento(ubicacion: string): string | null {
     }
     return null;
 }
+
+export const prepararFechaHoraCombinada = (fechaEvento: any, horaEvento: any) => {
+    let fechaString, horaString;
+
+    if (Platform.OS === 'web') {
+        fechaString = fechaEvento;
+        horaString = horaEvento;
+    } else {
+        fechaString = fechaEvento.toISOString().split('T')[0];
+        horaString = horaEvento.toTimeString().split(' ')[0].slice(0, 5);
+    }
+
+    return new Date(`${fechaString}T${horaString}:00`);
+};
