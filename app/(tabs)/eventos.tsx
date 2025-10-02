@@ -6,7 +6,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState, useEffect } from "react";
 import type { Deporte } from "../../interface/Deporte";
 import { deporteService } from "../../services/DeporteService";
-import { validateEventoForm, esFechaValida, esHoraValida, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento } from "../../src/validators";
+import { eventoService } from '../../services/EventoService';
+import { getProfile } from '../../src/storage/localCache';
+import { validateEventoForm, prepararFechaHoraCombinada, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento, validateParticipantesEvento } from "../../src/validators";
 
 export default function EventosScreen() {
     const [modalVisible, setModalVisible] = useState(false);
@@ -20,7 +22,7 @@ export default function EventosScreen() {
     const [mostrarDatePicker, setMostrarDatePicker] = useState(false);
     const [mostrarTimePicker, setMostrarTimePicker] = useState(false);
 
-    const [maxParticipantes, setMaxParticipantes] = useState(1);
+    const [maxParticipantes, setMaxParticipantes] = useState(0);
     const [descripcion, setDescripcion] = useState("");
     const [deportes, setDeportes] = useState<Deporte[]>([]);
     const [erroresValidacion, setErroresValidacion] = useState<string[]>([]);
@@ -31,7 +33,9 @@ export default function EventosScreen() {
     const [errorDeporte, setErrorDeporte] = useState<string | null>(null);
     const [errorTitulo, setErrorTitulo] = useState<string | null>(null);
     const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null);
+    const [errorParticipantes, setErrorParticipantes] = useState<string | null>(null);
     const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+    const [creandoEvento, setCreandoEvento] = useState(false);
 
     useEffect(() => {
         const fetchDeportes = async () => {
@@ -113,13 +117,15 @@ export default function EventosScreen() {
         return new Date(year, month - 1, day); // month - 1 porque Date usa 0-based months
     };
 
-    const handleCrearEvento = () => {
+    const handleCrearEvento = async () => {
         // Validar campos específicos primero
         const errorFechaValidacion = validateFechaEvento(fechaEvento);
         const errorHoraValidacion = validateHoraEvento(horaEvento);
         const errorDeporteValidacion = validateDeporteEvento(deporteId);
         const errorTituloValidacion = validateTituloEvento(nombreEvento);
         const errorUbicacionValidacion = validateUbicacionEvento(lugar);
+        const errorParticipantesValidacion = validateParticipantesEvento(maxParticipantes);
+
 
         // Validar formulario completo
         const validationResult = validateEventoForm(
@@ -138,49 +144,96 @@ export default function EventosScreen() {
         setErrorDeporte(errorDeporteValidacion);
         setErrorTitulo(errorTituloValidacion);
         setErrorUbicacion(errorUbicacionValidacion);
+        setErrorParticipantes(errorParticipantesValidacion);
         setErroresValidacion(validationResult.errors);
 
-        // Verificar si hay errores después de actualizar estados
-        if (!validationResult.isValid || errorFechaValidacion || errorHoraValidacion || errorDeporteValidacion || errorTituloValidacion || errorUbicacionValidacion) {
+        // Verificar si hay errores usando las variables (no los estados)
+        if (!validationResult.isValid || errorFechaValidacion || errorHoraValidacion || errorDeporteValidacion || errorTituloValidacion || errorUbicacionValidacion || errorParticipantesValidacion) {
             return; // Detener ejecución si hay errores
         }
 
-        // Si todas las validaciones pasan, proceder a crear el evento
-        console.log("Crear evento:", {
-            nombreEvento,
-            deporteId,
-            lugar,
-            fecha: fechaParaInputWeb(fechaEvento), // YYYY-MM-DD
-            hora: horaParaInputWeb(horaEvento), // HH:MM
-            maxParticipantes,
-            descripcion
-        });
+        // Obtener usuario del caché
+        const userProfile = await getProfile();
+        console.log("Profile from cache:", userProfile);
+        const userId = userProfile?.uid;
 
-        // Limpiar errores
-        setErroresValidacion([]);
-        setErrorFecha(null);
-        setErrorHora(null);
-        setErrorDeporte(null);
-        setErrorTitulo(null);
-        setErrorUbicacion(null);
+        if (!userId) {
+            if (Platform.OS === 'web') {
+                alert('Error: No se pudo identificar el usuario');
+            } else {
+                Alert.alert('Error', 'No se pudo identificar el usuario');
+            }
+            return;
+        }
 
-        // Mostrar confirmación según la plataforma
-        if (Platform.OS === 'web') {
-            // Mensaje de texto verde en web
-            setMensajeExito("¡Evento creado exitosamente!");
-            // Cerrar modal después de mostrar el mensaje
-            setTimeout(() => {
-                setMensajeExito(null);
+
+        // Preparar datos para enviar
+        const datosEvento = {
+            nombre_evento: nombreEvento,
+            deporte_id: deporteId,
+            lugar: lugar,
+            fecha_evento: prepararFechaHoraCombinada(fechaEvento, horaEvento),
+            max_participantes: maxParticipantes,
+            descripcion: descripcion,
+            createdBy: userId,
+            participantes: [], // lista de participantes vacia al crear
+            estado: "programado"
+        };
+
+        console.log("Crear evento:", datosEvento);
+
+        // Prevenir múltiples envíos
+        if (creandoEvento) return;
+        setCreandoEvento(true);
+
+        // Enviar datos a la API
+        try {
+            await eventoService.crearEvento(datosEvento);
+
+            // Si llega aquí, fue exitoso
+            // Limpiar errores
+            setErroresValidacion([]);
+            setErrorFecha(null);
+            setErrorHora(null);
+            setErrorDeporte(null);
+            setErrorTitulo(null);
+            setErrorUbicacion(null);
+            setErrorParticipantes(null);
+
+            // Mostrar confirmación según la plataforma
+            if (Platform.OS === 'web') {
+                // Mensaje de texto verde en web
+                setMensajeExito("¡Evento creado exitosamente!");
+                // Cerrar modal después de mostrar el mensaje
+                setTimeout(() => {
+                    setMensajeExito(null);
+                    setModalVisible(false);
+                }, 2500); // 2.5 segundos para ver el mensaje
+            } else {
+                // Cerrar modal inmediatamente en mobile y mostrar alert
                 setModalVisible(false);
-            }, 2500); // 2.5 segundos para ver el mensaje
-        } else {
-            // Cerrar modal inmediatamente en mobile y mostrar alert
-            setModalVisible(false);
-            Alert.alert(
-                "¡Evento creado!",
-                "Tu evento se ha creado exitosamente",
-                [{ text: "OK", style: "default" }]
-            );
+                Alert.alert(
+                    "¡Evento creado!",
+                    "Tu evento se ha creado exitosamente",
+                    [{ text: "OK", style: "default" }]
+                );
+            }
+
+        } catch (error) {
+            console.error("Error creando evento:", error);
+
+            // Mostrar error al usuario
+            if (Platform.OS === 'web') {
+                alert('Error al crear evento. Inténtalo de nuevo.');
+            } else {
+                Alert.alert(
+                    "Error",
+                    "No se pudo crear el evento. Inténtalo de nuevo.",
+                    [{ text: "OK", style: "default" }]
+                );
+            }
+        } finally {
+            setCreandoEvento(false);
         }
     };
 
@@ -198,7 +251,9 @@ export default function EventosScreen() {
         setErrorDeporte(null);
         setErrorTitulo(null);
         setErrorUbicacion(null);
+        setErrorParticipantes(null);
         setMensajeExito(null);
+        setCreandoEvento(false);
         setModalVisible(false);
     };
 
@@ -207,7 +262,7 @@ export default function EventosScreen() {
     };
 
     const decrementarParticipantes = () => {
-        setMaxParticipantes(prev => Math.max(1, prev - 1));
+        setMaxParticipantes(prev => Math.max(0, prev - 1));
     };
 
     return (
@@ -378,7 +433,8 @@ export default function EventosScreen() {
                                     ) : (
                                         <Pressable onPress={() => setMostrarDatePicker(true)}>
                                             <Text className="text-gray-900 py-1">
-                                                📅 {formatearFechaParaMostrar(fechaEvento)}
+                                                < Ionicons name="calendar-outline" size={20} color="#111827" />
+                                                {formatearFechaParaMostrar(fechaEvento)}
                                             </Text>
                                         </Pressable>
                                     )}
@@ -424,7 +480,8 @@ export default function EventosScreen() {
                                     ) : (
                                         <Pressable onPress={() => setMostrarTimePicker(true)}>
                                             <Text className="text-gray-900 py-1">
-                                                ⏰ {formatearHoraParaMostrar(horaEvento)}
+                                                <Ionicons name="time-outline" size={20} color="#111827" />
+                                                {formatearHoraParaMostrar(horaEvento)}
                                             </Text>
                                         </Pressable>
                                     )}
@@ -441,13 +498,26 @@ export default function EventosScreen() {
                                 <Text className="text-sm text-gray-700 mb-2">Máximo de participantes</Text>
                                 <View className="flex-row items-center">
                                     <TextInput
+                                        placeholder="Ej: 10"
                                         className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-gray-900"
-                                        value={maxParticipantes.toString()}
+                                        value={maxParticipantes === 0 ? '' : maxParticipantes.toString()}
                                         onChangeText={(text) => {
-                                            const num = parseInt(text) || 1;
-                                            setMaxParticipantes(num > 0 ? num : 1);
+                                            // Permitir escribir cualquier número
+                                            if (text === '') {
+                                                setMaxParticipantes(0);
+                                            } else {
+                                                const num = parseInt(text);
+                                                if (!isNaN(num)) {
+                                                    setMaxParticipantes(num); // Permitir cualquier número
+                                                }
+                                            }
+                                            // Limpiar errores mientras escribe
                                             if (erroresValidacion.length > 0) {
                                                 setErroresValidacion([]);
+                                            }
+                                            // Limpiar error de participantes si cambia
+                                            if (errorParticipantes) {
+                                                setErrorParticipantes(null);
                                             }
                                         }}
                                         keyboardType="numeric"
@@ -469,6 +539,12 @@ export default function EventosScreen() {
                                     </View>
                                 </View>
                             </View>
+                            {/* Error de participantes */}
+                            {errorParticipantes && (
+                                <Text className="text-red-600 text-sm mt-1">
+                                    {errorParticipantes}
+                                </Text>
+                            )}
 
                             <View className="mb-6">
                                 <Text className="text-sm text-gray-700 mb-2">Descripción</Text>
@@ -492,10 +568,14 @@ export default function EventosScreen() {
                                     <Text className="text-white font-semibold">Cancelar</Text>
                                 </Pressable>
                                 <Pressable
-                                    onPress={handleCrearEvento}
-                                    className="flex-1 bg-primary rounded-xl py-3 items-center"
+                                    onPress={creandoEvento ? undefined : handleCrearEvento}
+                                    className={`flex-1 rounded-xl py-3 items-center ${creandoEvento ? 'bg-gray-400' : 'bg-primary'
+                                        }`}
+                                    disabled={creandoEvento}
                                 >
-                                    <Text className="text-white font-semibold">Crear Evento</Text>
+                                    <Text className="text-white font-semibold">
+                                        {creandoEvento ? 'Creando...' : 'Crear Evento'}
+                                    </Text>
                                 </Pressable>
                             </View>
                         </View>
