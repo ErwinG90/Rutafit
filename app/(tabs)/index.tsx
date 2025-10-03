@@ -38,6 +38,7 @@ export default function MapaScreen() {
   return (
     <MapView
       style={{ flex: 1 }}
+
       initialRegion={{
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
