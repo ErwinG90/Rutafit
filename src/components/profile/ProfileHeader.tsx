@@ -1,6 +1,6 @@
 // src/components/profile/ProfileHeader.tsx
 import React from "react";
-import { View, Text } from "react-native";
+import { View, Text, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 type Props = {
@@ -9,6 +9,7 @@ type Props = {
     email?: string;
     deporteNombre?: string;
     nivelNombre?: string;
+    avatar?: string;
 };
 
 export default function ProfileHeader({
@@ -17,12 +18,21 @@ export default function ProfileHeader({
     email,
     deporteNombre,
     nivelNombre,
+    avatar,
 }: Props) {
     return (
         <View className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
             <View className="flex-row items-center">
-                <View className="h-12 w-12 rounded-full bg-primary/15 border border-primary items-center justify-center mr-3">
-                    <Ionicons name="person" size={22} color="#22c55e" />
+                <View className="h-12 w-12 rounded-full bg-primary/15 border border-primary items-center justify-center mr-3 overflow-hidden">
+                    {avatar ? (
+                        <Image
+                            source={{ uri: avatar }}
+                            style={{ width: 48, height: 48 }}
+                            className="rounded-full"
+                        />
+                    ) : (
+                        <Ionicons name="person" size={22} color="#22c55e" />
+                    )}
                 </View>
 
                 <View className="flex-1">
