@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, Pressable, ActivityIndicator, ScrollView } from "react-native";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { View, Text, Pressable, ActivityIndicator, RefreshControl, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
@@ -20,7 +20,11 @@ export default function PerfilScreen() {
   const [offline, setOffline] = useState(false);
   const [profile, setProfile] = useState<any | null>(null);
 
-  // Precarga catálogos para resolver nombres sin /:id
+  // Pull to refresh
+  const [refreshing, setRefreshing] = useState(false);
+  const pullY = useRef(new Animated.Value(0)).current;
+
+  // Precarga catálogos
   useEffect(() => {
     preloadCatalogos();
   }, []);
@@ -33,7 +37,7 @@ export default function PerfilScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!refreshing) setLoading(true);
     setOffline(false);
     try {
       const uid = auth.currentUser?.uid;
@@ -52,10 +56,19 @@ export default function PerfilScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fetchFromApi]);
+  }, [fetchFromApi, refreshing]);
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   async function onLogout() {
@@ -67,12 +80,11 @@ export default function PerfilScreen() {
     }
   }
 
-  // Si vas a crear una pantalla de ajustes, pásale este handler al SettingsCard
   const openSettings = () => {
-    // router.push("/(settings)"); // descomenta y ajusta la ruta cuando tengas esa screen
+    // router.push("/(settings)");
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <SafeAreaView className="flex-1 bg-background">
         <View className="flex-1 items-center justify-center">
@@ -82,6 +94,24 @@ export default function PerfilScreen() {
       </SafeAreaView>
     );
   }
+
+  // Animaciones del “header” de arrastre
+  const rotate = pullY.interpolate({
+    inputRange: [-120, 0],
+    outputRange: ["180deg", "0deg"],
+    extrapolate: "clamp",
+  });
+  const headerOpacity = pullY.interpolate({
+    inputRange: [-80, -20, 0],
+    outputRange: [1, 0.3, 0],
+    extrapolate: "clamp",
+  });
+  const headerTranslate = pullY.interpolate({
+    inputRange: [-120, 0],
+    outputRange: [0, -20],
+    extrapolate: "clamp",
+  });
+
   const deporteNombre = profile?._display?.deporteFavoritoNombre;
   const nivelNombre = profile?._display?.nivelExperienciaNombre;
 
@@ -99,7 +129,42 @@ export default function PerfilScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      {/* Scroll con pull-to-refresh y animación */}
+      <Animated.ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: pullY } } }],
+          { useNativeDriver: true }
+        )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            // Se ven bien con tu paleta extendida
+            tintColor="#16a34a"
+            titleColor="#16a34a"
+            title={refreshing ? "Actualizando…" : "Desliza para refrescar"}
+          />
+        }
+      >
+        {/* Header animado que aparece al tirar */}
+        <Animated.View
+          style={{
+            opacity: headerOpacity,
+            transform: [{ translateY: headerTranslate }],
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <Animated.View style={{ transform: [{ rotate }] }}>
+            <Ionicons name="chevron-down" size={22} color="#16a34a" />
+          </Animated.View>
+          <Text className="text-[12px] text-[#16a34a] mt-1">
+            Suelta para actualizar
+          </Text>
+        </Animated.View>
+
         {offline && (
           <View className="mb-3 rounded-2xl border border-amber-500/30 bg-amber-100 px-3 py-2">
             <Text className="text-amber-700">
@@ -116,7 +181,6 @@ export default function PerfilScreen() {
           nivelNombre={nivelNombre}
         />
 
-
         <StatsCard
           rutas={profile?.stats?.rutas}
           distanciaTotal={profile?.stats?.distanciaTotal}
@@ -128,9 +192,9 @@ export default function PerfilScreen() {
           notif={profile?.settings?.notif}
           privacy={profile?.settings?.privacy}
           units={profile?.settings?.units}
-        // onOpenSettings={openSettings} // pásalo cuando tengas la screen
+        // onOpenSettings={openSettings}
         />
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
