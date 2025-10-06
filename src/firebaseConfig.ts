@@ -1,8 +1,10 @@
-// src/firebaseConfig.ts (modo Web estable)
+// src/firebaseConfig.ts
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth, type Auth, setPersistence, browserLocalPersistence, inMemoryPersistence } from "firebase/auth";
+import { getAuth, type Auth,setPersistence,browserLocalPersistence,initializeAuth,
+  getReactNativePersistence,} from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const extra = Constants.expoConfig?.extra ?? {};
 const firebaseConfig = {
@@ -15,11 +17,23 @@ const firebaseConfig = {
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const auth: Auth = getAuth(app);
 
-// Web persistente, nativo temporal en memoria (para que compile y puedas seguir)
+let auth: Auth;
+
 if (Platform.OS === "web") {
+  // Web: persistencia en localStorage
+  auth = getAuth(app);
   setPersistence(auth, browserLocalPersistence).catch(() => {});
 } else {
-  setPersistence(auth, inMemoryPersistence).catch(() => {});
+  // Nativo: persistencia en AsyncStorage
+  // initializeAuth solo puede llamarse una vez; por si ya existe, hacemos fallback a getAuth
+  try {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch {
+    auth = getAuth(app);
+  }
 }
+
+export { auth };

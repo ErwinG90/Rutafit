@@ -3,16 +3,17 @@ import { View, Text, TextInput, Pressable, ActivityIndicator, Alert } from "reac
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../../src/firebaseConfig";
 import { useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 
 type Props = {
-  onBackToLogin?: () => void; // opcional, por si ya lo tienes en tu flujo
+  onBackToLogin?: () => void;
 };
 
 export default function ForgotPasswordScreen({ onBackToLogin }: Props) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const router = useRouter();
 
   const backToLogin = () => {
@@ -23,10 +24,11 @@ export default function ForgotPasswordScreen({ onBackToLogin }: Props) {
   const handleSubmit = async () => {
     const trimmed = email.trim();
     if (!trimmed || !trimmed.includes("@")) {
-      Alert.alert("Email inválido", "Por favor ingresa un email válido.");
+      setFormError("Por favor ingresa un correo válido.");
       return;
     }
     setLoading(true);
+    setFormError(null);
     try {
       await sendPasswordResetEmail(auth, trimmed);
       setEmailSent(true);
@@ -36,8 +38,8 @@ export default function ForgotPasswordScreen({ onBackToLogin }: Props) {
           ? "No existe un usuario con ese correo."
           : e?.code === "auth/invalid-email"
             ? "El correo no es válido."
-            : e?.message ?? "No se pudo enviar el email de recuperación.";
-      Alert.alert("Error", msg);
+            : e?.message ?? "No se pudo enviar el correo de recuperación.";
+      setFormError(msg);
     } finally {
       setLoading(false);
     }
@@ -45,121 +47,89 @@ export default function ForgotPasswordScreen({ onBackToLogin }: Props) {
 
   if (emailSent) {
     return (
-      <View className="flex-1 items-center justify-center p-4"
-        style={{
-          // gradiente suave del mockup (blue->green)
-          backgroundColor: "transparent",
-        }}
-      >
-        <View className="absolute inset-0" pointerEvents="none">
-          {/* degradado simple con tailwind: */}
-          <View className="flex-1 bg-gradient-to-br from-blue-50 to-green-50" />
-        </View>
-
-        {/* Card */}
-        <View className="w-full max-w-md rounded-2xl bg-white shadow-lg">
-          <View className="items-center px-6 pt-6">
-            <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-green-100">
-              <Feather name="mail" size={24} color="#16a34a" style={{ alignSelf: "center", marginTop: 12 }} />
-            </View>
-            <Text className="text-lg font-semibold text-text">Email Enviado</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500 px-4">
-              Hemos enviado las instrucciones para restablecer tu contraseña a {email}
+      <View className="flex-1 bg-black items-center justify-center px-6">
+        <View className="w-full max-w-md rounded-2xl bg-white p-6">
+          <View className="items-center mb-4">
+            <Ionicons name="mail" size={40} color="#22c55e" />
+            <Text className="mt-4 text-lg font-semibold text-text">Email Enviado</Text>
+            <Text className="mt-2 text-center text-sm text-gray-500">
+              Hemos enviado las instrucciones a {email}
             </Text>
           </View>
 
-          <View className="px-6 py-6">
-            <View className="space-y-2">
-              <Text className="text-center text-sm text-gray-500">
-                Revisa tu bandeja de entrada y sigue las instrucciones.
-              </Text>
-              <Text className="text-center text-sm text-gray-500">
-                Si no ves el email, revisa tu carpeta de spam.
-              </Text>
-            </View>
+          <Pressable
+            onPress={backToLogin}
+            className="w-full rounded-2xl bg-primary py-3 items-center"
+          >
+            <Text className="text-white font-semibold">Volver al inicio de sesión</Text>
+          </Pressable>
 
-            {/* Botón volver */}
-            <Pressable
-              onPress={backToLogin}
-              className="mt-5 w-full items-center rounded-xl border border-gray-300 py-3"
-            >
-              <View className="flex-row items-center">
-                <Feather name="arrow-left" size={16} color="#111827" />
-                <Text className="ml-2 font-medium text-text">Volver al inicio de sesión</Text>
-              </View>
-            </Pressable>
-
-            {/* Enviar nuevamente */}
-            <Pressable
-              onPress={() => setEmailSent(false)}
-              className="mt-2 w-full items-center rounded-xl py-3"
-            >
-              <Text className="text-primary font-medium">Enviar nuevamente</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={() => setEmailSent(false)}
+            className="mt-3 w-full items-center"
+          >
+            <Text className="text-primary font-semibold">Enviar nuevamente</Text>
+          </Pressable>
         </View>
       </View>
     );
   }
 
-  // Formulario
   return (
-    <View className="flex-1 items-center justify-center p-4">
-      <View className="absolute inset-0" pointerEvents="none">
-        <View className="flex-1 bg-gradient-to-br from-blue-50 to-green-50" />
+    <View className="flex-1 bg-black px-6 pt-10">
+      <Text className="uppercase tracking-widest text-primary text-3xl font-bold drop-shadow mb-2">
+        Rutafit
+      </Text>
+      <Text className="text-lg font-semibold text-white mb-6">Recuperar contraseña</Text>
+
+      {/* Input */}
+      <Text className="text-[13px] text-white mb-2">Correo</Text>
+      <View className="flex-row items-center bg-gray-100 rounded-xl px-3 h-12 border border-gray-200">
+        <Ionicons name="mail" size={18} color="#6b7280" />
+        <TextInput
+          className="flex-1 ml-2 text-text"
+          placeholder="tu@correo.com"
+          placeholderTextColor="#9ca3af"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={(t) => {
+            setEmail(t);
+            if (formError) setFormError(null);
+          }}
+          returnKeyType="done"
+          onSubmitEditing={handleSubmit}
+        />
       </View>
 
-      {/* Card */}
-      <View className="w-full max-w-md rounded-2xl bg-white shadow-lg">
-        {/* Header */}
-        <View className="items-center px-6 pt-6">
-          <View className="mx-auto mb-4 h-12 w-12 items-center justify-center rounded-full bg-primary">
-            {/* icono centrado con color de contraste */}
-            <Feather name="map-pin" size={24} color="#ffffff" style={{ alignSelf: "center", marginTop: 12 }} />
-          </View>
-          <Text className="text-lg font-semibold text-text">Recuperar Contraseña</Text>
-          <Text className="mt-1 text-center text-sm text-gray-500 px-4">
-            Ingresa tu email y te enviaremos instrucciones para restablecer tu contraseña
-          </Text>
-        </View>
+      {/* Error */}
+      {!!formError && (
+        <Text className="mt-2 text-[13px]" style={{ color: "#C51217" }}>
+          {formError}
+        </Text>
+      )}
 
-        {/* Content */}
-        <View className="px-6 py-6">
-          {/* Label */}
-          <Text className="mb-2 text-sm font-medium text-text">Email</Text>
+      {/* Botón enviar */}
+      <View className="mt-6">
+        <Pressable
+          onPress={handleSubmit}
+          disabled={loading}
+          className={`rounded-2xl px-6 py-3 items-center ${loading ? "bg-primary/50" : "bg-primary"
+            }`}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-white font-semibold">Enviar instrucciones</Text>
+          )}
+        </Pressable>
+      </View>
 
-          {/* Input */}
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholder="tu@email.com"
-            placeholderTextColor="#9ca3af"
-            className="mb-4 rounded-xl border border-gray-300 px-4 py-3 text-text"
-          />
-
-          {/* Button */}
-          <Pressable
-            onPress={handleSubmit}
-            disabled={loading}
-            className={`w-full items-center rounded-xl py-3 ${loading ? "bg-primary-dark/70" : "bg-primary"}`}
-          >
-            {loading ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text className="font-semibold text-white">Enviar Instrucciones</Text>
-            )}
-          </Pressable>
-
-          {/* Back link */}
-          <Pressable onPress={backToLogin} className="mt-6 w-full items-center">
-            <View className="flex-row items-center">
-              <Feather name="arrow-left" size={16} color="#22c55e" />
-              <Text className="ml-2 text-sm text-primary">Volver al inicio de sesión</Text>
-            </View>
-          </Pressable>
-        </View>
+      {/* Back link */}
+      <View className="mt-6 items-center">
+        <Pressable onPress={backToLogin}>
+          <Text className="text-primary">Volver al inicio de sesión</Text>
+        </Pressable>
       </View>
     </View>
   );
