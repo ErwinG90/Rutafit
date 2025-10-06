@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { View, Text, TextInput, Pressable, ScrollView } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, useRouter } from "expo-router";
@@ -10,49 +10,54 @@ import {
 } from "firebase/auth";
 import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { auth } from "../../src/firebaseConfig";
-import { validateEmail, validatePassword, calcularEdadSuave } from "../../src/validators";
+import { validateEmail, validatePassword } from "../../src/validators";
 import type { Deporte } from "../../interface/Deporte";
 import type { Nivel } from "../../interface/Nivel";
 import { deporteService } from "../../services/DeporteService";
 import { nivelService } from "../../services/NivelService";
 import {
-  MESES,
-  SOLO_LETRAS,
-  Genero,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
   PLACEHOLDERS,
   VALIDATION_CONFIG,
+  SOLO_LETRAS,
 } from "../../src/Constants";
+import type { Genero } from "../../src/Constants";
 
 export default function RegisterScreen() {
   const router = useRouter();
 
-  // Estados
+  // Datos básicos
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
-  const [dia, setDia] = useState<number | undefined>();
-  const [mes, setMes] = useState<number | undefined>();
-  const [anio, setAnio] = useState<number | undefined>();
+  // Perfil
   const [genero, setGenero] = useState<Genero>("mujer");
 
+  // Fecha de nacimiento (picker)
+  const [fechaNacimiento, setFechaNacimiento] = useState<Date | null>(null);
+  const [mostrarDatePickerNacimiento, setMostrarDatePickerNacimiento] = useState(false);
+  const [errorFechaNac, setErrorFechaNac] = useState<string | null>(null);
+
+  // Catálogos
   const [deportes, setDeportes] = useState<Deporte[]>([]);
   const [niveles, setNiveles] = useState<Nivel[]>([]);
   const [deporteId, setDeporteId] = useState<string | undefined>();
   const [nivelId, setNivelId] = useState<string | undefined>();
 
+  // UI
   const [showPw, setShowPw] = useState(false);
   const [showPw2, setShowPw2] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // ---- Fetch deportes y niveles ----
+  // Fetch catálogos
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -68,13 +73,35 @@ export default function RegisterScreen() {
   }, []);
 
   // ---------- VALIDACIONES ----------
-  const nombreOk = nombre.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(nombre.trim());
-  const apellidoOk = apellido.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(apellido.trim());
+  const nombreOk =
+    nombre.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(nombre.trim());
+  const apellidoOk =
+    apellido.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(apellido.trim());
   const emailOk = validateEmail(email);
   const pwOk = validatePassword(pw);
   const pwMatch = pw.length > 0 && pw === pw2;
-  const edadInfo = calcularEdadSuave(dia, mes, anio);
-  const fechaOk = edadInfo.exactaOK && (edadInfo.edad ?? 0) >= VALIDATION_CONFIG.MIN_AGE;
+
+  // Fechas para UI y validación
+  const hoy = new Date();                     // tope visual y validación
+  const minPickerDate = new Date(1900, 0, 1); // solo visual
+  const edadMinima = VALIDATION_CONFIG?.MIN_AGE ?? 16;
+  const limiteEdad = new Date(                // hoy - 16 (solo validación)
+    hoy.getFullYear() - edadMinima,
+    hoy.getMonth(),
+    hoy.getDate()
+  );
+
+  function validarFechaNacimiento(fecha: Date | null): string | null {
+    if (!fecha) return ERROR_MESSAGES.VALIDATION.DATE_REQUIRED;
+    if (fecha > hoy) return ERROR_MESSAGES.VALIDATION.DATE_FUTURE;         // por si escriben futura en web
+    if (fecha > limiteEdad) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;// menor de 16
+    if (fecha < minPickerDate) return ERROR_MESSAGES.VALIDATION.DATE_TOO_OLD;
+    return null;
+  }
+
+  useEffect(() => {
+    setErrorFechaNac(validarFechaNacimiento(fechaNacimiento));
+  }, [fechaNacimiento]);
 
   const nombreHint = useMemo(() => (!nombre || nombreOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID), [nombre, nombreOk]);
   const apellidoHint = useMemo(() => (!apellido || apellidoOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID), [apellido, apellidoOk]);
@@ -82,28 +109,23 @@ export default function RegisterScreen() {
   const pwHint = useMemo(() => (!pw || pwOk ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_INVALID), [pw, pwOk]);
   const pw2Hint = useMemo(() => (!pw2 || pwMatch ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_MISMATCH), [pw2, pwMatch]);
 
-  const fechaHint = useMemo(() => {
-    if (edadInfo.futura) return ERROR_MESSAGES.VALIDATION.DATE_FUTURE;
-    if (edadInfo.menor16Posible) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
-    if (edadInfo.exactaOK && (edadInfo.edad ?? 0) < VALIDATION_CONFIG.MIN_AGE) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
-    return "";
-  }, [edadInfo]);
+  const fechaNacOk = !validarFechaNacimiento(fechaNacimiento);
 
   const canSubmit =
-    nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaOk && !submitting;
+    nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaNacOk && !submitting;
 
-  function prettyError(e: any) {
-    const code = e?.code || "";
-    if (code === "auth/email-already-in-use") return ERROR_MESSAGES.AUTH.EMAIL_IN_USE;
-    if (code === "auth/invalid-email") return ERROR_MESSAGES.AUTH.INVALID_EMAIL;
-    if (code === "auth/weak-password") return ERROR_MESSAGES.AUTH.WEAK_PASSWORD;
-    if (code === "auth/network-request-failed") return ERROR_MESSAGES.AUTH.NETWORK_ERROR;
-    return ERROR_MESSAGES.AUTH.DEFAULT;
-  }
+  // Helpers fecha (web)
+  const fechaParaInputWeb = (fecha: Date): string => fecha.toISOString().split("T")[0];
+  const crearFechaDesdeInputWeb = (s: string): Date => {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const formatearFechaParaMostrar = (f: Date) =>
+    f.toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   // ---------- SUBMIT ----------
   async function onSubmit() {
-    if (!canSubmit) return;
+    if (!canSubmit || !fechaNacimiento) return;
     setSubmitting(true);
     setFormError(null);
     setSuccessMsg(null);
@@ -111,17 +133,18 @@ export default function RegisterScreen() {
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), pw);
       const displayName = `${nombre.trim()} ${apellido.trim()}`;
       await updateProfile(user, { displayName });
-      try {
-        await sendEmailVerification(user);
-      } catch { }
+      try { await sendEmailVerification(user); } catch {}
 
       try {
+        const yyyy = fechaNacimiento.getFullYear();
+        const mm = String(fechaNacimiento.getMonth() + 1).padStart(2, "0");
+        const dd = String(fechaNacimiento.getDate()).padStart(2, "0");
         await axios.post("https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/users", {
           uid: user.uid,
           nombre,
           apellido,
           email,
-          fechaNacimiento: `${anio}-${String(mes ?? "").padStart(2, "0")}-${String(dia ?? "").padStart(2, "0")}`,
+          fechaNacimiento: `${yyyy}-${mm}-${dd}`,
           genero,
           deporteFavorito: deporteId,
           nivelExperiencia: nivelId,
@@ -133,20 +156,17 @@ export default function RegisterScreen() {
       setSuccessMsg(SUCCESS_MESSAGES.ACCOUNT_CREATED);
       setTimeout(() => router.replace("/(auth)/Login"), 1500);
     } catch (e: any) {
-      setFormError(prettyError(e));
+      const code = e?.code || "";
+      if (code === "auth/email-already-in-use") setFormError(ERROR_MESSAGES.AUTH.EMAIL_IN_USE);
+      else if (code === "auth/invalid-email") setFormError(ERROR_MESSAGES.AUTH.INVALID_EMAIL);
+      else if (code === "auth/weak-password") setFormError(ERROR_MESSAGES.AUTH.WEAK_PASSWORD);
+      else if (code === "auth/network-request-failed") setFormError(ERROR_MESSAGES.AUTH.NETWORK_ERROR);
+      else setFormError(ERROR_MESSAGES.AUTH.DEFAULT);
       console.log("signup error:", e);
     } finally {
       setSubmitting(false);
     }
   }
-
-  const years = (() => {
-    const now = new Date().getUTCFullYear();
-    const arr: number[] = [];
-    for (let y = now; y >= 1950; y--) arr.push(y);
-    return arr;
-  })();
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
 
   return (
     <SafeAreaView className="flex-1 bg-black">
@@ -169,7 +189,8 @@ export default function RegisterScreen() {
                 placeholder={PLACEHOLDERS.NAME}
                 placeholderTextColor="#9ca3af"
                 value={nombre}
-                onChangeText={setNombre}
+                onChangeText={(t) => { setNombre(t); if (formError) setFormError(null); }}
+                returnKeyType="next"
                 autoCapitalize="words"
               />
             </View>
@@ -186,7 +207,8 @@ export default function RegisterScreen() {
                 placeholder={PLACEHOLDERS.LAST_NAME}
                 placeholderTextColor="#9ca3af"
                 value={apellido}
-                onChangeText={setApellido}
+                onChangeText={(t) => { setApellido(t); if (formError) setFormError(null); }}
+                returnKeyType="next"
                 autoCapitalize="words"
               />
             </View>
@@ -195,7 +217,7 @@ export default function RegisterScreen() {
 
           {/* Email */}
           <View className="mb-4">
-            <Text className="text-[13px] text-white mb-2">Correo</Text>
+            <Text className="text-[13px] text-white mb-2">Email</Text>
             <View className="flex-row items-center bg-gray-100 rounded-xl px-3 h-12 border border-gray-200">
               <Ionicons name="mail" size={18} color="#6b7280" />
               <TextInput
@@ -205,7 +227,8 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(t) => { setEmail(t); if (formError) setFormError(null); }}
+                returnKeyType="next"
               />
             </View>
             {!!emailHint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{emailHint}</Text>}
@@ -222,7 +245,8 @@ export default function RegisterScreen() {
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw}
                 value={pw}
-                onChangeText={setPw}
+                onChangeText={(t) => { setPw(t); if (formError) setFormError(null); }}
+                returnKeyType="next"
               />
               <Pressable onPress={() => setShowPw((s) => !s)} hitSlop={8}>
                 <Ionicons name={showPw ? "eye-off" : "eye"} size={18} color="#6b7280" />
@@ -242,7 +266,8 @@ export default function RegisterScreen() {
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw2}
                 value={pw2}
-                onChangeText={setPw2}
+                onChangeText={(t) => { setPw2(t); if (formError) setFormError(null); }}
+                returnKeyType="done"
                 onSubmitEditing={onSubmit}
               />
               <Pressable onPress={() => setShowPw2((s) => !s)} hitSlop={8}>
@@ -254,27 +279,34 @@ export default function RegisterScreen() {
 
           {/* Fecha de nacimiento */}
           <Text className="text-[13px] text-white mb-2">Fecha de nacimiento</Text>
-          <View className="flex-row gap-3 mb-1">
-            <View className="flex-1 bg-gray-100 rounded-xl border border-gray-200">
-              <Picker selectedValue={dia ?? 0} onValueChange={(v: number) => setDia(v === 0 ? undefined : v)}>
-                <Picker.Item label="Día" value={0} />
-                {days.map((d) => <Picker.Item key={d} label={String(d)} value={d} />)}
-              </Picker>
-            </View>
-            <View className="flex-1 bg-gray-100 rounded-xl border border-gray-200">
-              <Picker selectedValue={mes ?? 0} onValueChange={(v: number) => setMes(v === 0 ? undefined : v)}>
-                <Picker.Item label="Mes" value={0} />
-                {MESES.map((m) => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
-              </Picker>
-            </View>
-            <View className="flex-1 bg-gray-100 rounded-xl border border-gray-200">
-              <Picker selectedValue={anio ?? 0} onValueChange={(v: number) => setAnio(v === 0 ? undefined : v)}>
-                <Picker.Item label="Año" value={0} />
-                {years.map((y) => <Picker.Item key={y} label={String(y)} value={y} />)}
-              </Picker>
-            </View>
+          <View className="bg-gray-100 rounded-xl px-4 py-3 mb-1">
+            {Platform.OS === "web" ? (
+              <input
+                type="date"
+                value={fechaNacimiento ? fechaParaInputWeb(fechaNacimiento) : ""}
+                min={`${minPickerDate.getFullYear()}-${String(minPickerDate.getMonth() + 1).padStart(2, "0")}-${String(minPickerDate.getDate()).padStart(2, "0")}`}
+                max={`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`} // hasta HOY
+                onChange={(e) => {
+                  const f = e.target.value ? crearFechaDesdeInputWeb(e.target.value) : null;
+                  setFechaNacimiento(f);
+                  setErrorFechaNac(validarFechaNacimiento(f));
+                }}
+                style={{ width: "100%", padding: 8, border: "none", background: "transparent", fontSize: 16, color: "#374151" }}
+              />
+            ) : (
+              <Pressable onPress={() => setMostrarDatePickerNacimiento(true)}>
+                <Text className="text-gray-900 py-1">
+                  <Ionicons name="calendar-outline" size={20} color="#111827" />{" "}
+                  {fechaNacimiento ? formatearFechaParaMostrar(fechaNacimiento) : "Selecciona tu fecha"}
+                </Text>
+              </Pressable>
+            )}
           </View>
-          {!!fechaHint && <Text className="text-xs mt-1" style={{ color: "#C51217" }}>{fechaHint}</Text>}
+          {!!errorFechaNac && (
+            <Text className="text-xs mt-1" style={{ color: "#C51217" }}>
+              {errorFechaNac}
+            </Text>
+          )}
 
           {/* Género */}
           <Text className="text-[13px] text-white mb-2 mt-4">Género</Text>
@@ -285,6 +317,7 @@ export default function RegisterScreen() {
             >
               <Text className={`${genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"}`}>Mujer</Text>
             </Pressable>
+
             <Pressable
               className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "hombre" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"}`}
               onPress={() => setGenero("hombre")}
@@ -298,7 +331,9 @@ export default function RegisterScreen() {
           <View className="mb-4 bg-gray-100 rounded-xl border border-gray-200">
             <Picker selectedValue={deporteId} onValueChange={(v) => setDeporteId(v)}>
               <Picker.Item label="Selecciona un deporte" value={undefined} />
-              {deportes.map((d) => <Picker.Item key={d._id} label={d.nombre} value={d._id} />)}
+              {deportes.map((d) => (
+                <Picker.Item key={d._id} label={d.nombre} value={d._id} />
+              ))}
             </Picker>
           </View>
 
@@ -307,13 +342,23 @@ export default function RegisterScreen() {
           <View className="mb-2 bg-gray-100 rounded-xl border border-gray-200">
             <Picker selectedValue={nivelId} onValueChange={(v) => setNivelId(v)}>
               <Picker.Item label="Selecciona un nivel" value={undefined} />
-              {niveles.map((n) => <Picker.Item key={n._id} label={n.nombre} value={n._id} />)}
+              {niveles.map((n) => (
+                <Picker.Item key={n._id} label={n.nombre} value={n._id} />
+              ))}
             </Picker>
           </View>
 
-          {/* Mensajes */}
-          {!!formError && <Text className="mt-2 text-[13px]" style={{ color: "#C51217" }}>{formError}</Text>}
-          {!!successMsg && <Text className="mt-2 text-[13px]" style={{ color: "green" }}>{successMsg}</Text>}
+          {/* Mensajes globales */}
+          {!!formError && (
+            <Text className="mt-2 text-[13px]" style={{ color: "#C51217" }}>
+              {formError}
+            </Text>
+          )}
+          {!!successMsg && (
+            <Text className="mt-2 text-[13px]" style={{ color: "green" }}>
+              {successMsg}
+            </Text>
+          )}
 
           {/* Botón Crear */}
           <View className="mt-4 mb-6">
@@ -334,6 +379,21 @@ export default function RegisterScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* DatePicker nativo (solo mobile) */}
+      {mostrarDatePickerNacimiento && Platform.OS !== "web" && (
+        <DateTimePicker
+          value={fechaNacimiento ?? new Date()}      // abre en HOY
+          mode="date"
+          display={Platform.OS === "android" ? "calendar" : "inline"} // Android: calendario; iOS: inline
+          minimumDate={minPickerDate}               // se ven todos los años desde 1900
+          maximumDate={hoy}                         // hasta HOY
+          onChange={(_, d) => {
+            setMostrarDatePickerNacimiento(false);
+            if (d) setFechaNacimiento(d);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
