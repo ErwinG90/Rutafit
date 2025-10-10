@@ -8,6 +8,7 @@ import type { Deporte } from "../../interface/Deporte";
 import { deporteService } from "../../services/DeporteService";
 import { eventoService } from '../../services/EventoService';
 import { getProfile } from '../../src/storage/localCache';
+import { getUserById } from '../../services/UserService';
 import { validateEventoForm, prepararFechaHoraCombinada, validateFechaEvento, validateHoraEvento, validateDeporteEvento, validateTituloEvento, validateUbicacionEvento, validateParticipantesEvento } from "../../src/validators";
 
 export default function EventosScreen() {
@@ -37,6 +38,14 @@ export default function EventosScreen() {
     const [mensajeExito, setMensajeExito] = useState<string | null>(null);
     const [creandoEvento, setCreandoEvento] = useState(false);
 
+    // Estados para eventos reales
+    const [eventos, setEventos] = useState<any[]>([]);
+    const [cargandoEventos, setCargandoEventos] = useState(true);
+    const [errorEventos, setErrorEventos] = useState<string | null>(null);
+
+    // estado para manejar la pestaña activa
+    const [pestañaActiva, setPestañaActiva] = useState<'disponibles' | 'mis-eventos'>('disponibles');
+
     useEffect(() => {
         const fetchDeportes = async () => {
             try {
@@ -47,6 +56,10 @@ export default function EventosScreen() {
             }
         };
         fetchDeportes();
+    }, []);
+
+    useEffect(() => {
+        obtenerEventos();
     }, []);
 
     // Funciones para manejar DateTimePicker
@@ -265,6 +278,54 @@ export default function EventosScreen() {
         setMaxParticipantes(prev => Math.max(0, prev - 1));
     };
 
+    const obtenerEventos = async () => {
+        try {
+            setCargandoEventos(true);
+            const eventos = await eventoService.getEventos();
+
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            const eventosVigentes = eventos.filter(evento => {
+                const fechaEvento = new Date(evento.fecha_evento);
+                return fechaEvento >= hoy;
+            });
+
+            // Para cada evento, obtener datos del usuario Y del deporte
+            const eventosCompletos = await Promise.all(
+                eventosVigentes.map(async (evento) => {
+                    try {
+                        // Obtener usuario
+                        const usuario = await getUserById(evento.createdBy);
+
+                        // Obtener deporte
+                        const deporte = deportes.find(d => d._id === evento.deporte_id) || { nombre: 'Deporte no encontrado' };
+
+                        return {
+                            ...evento,
+                            creador: usuario,
+                            deporte: deporte
+                        };
+                    } catch (error) {
+                        console.error('Error obteniendo datos adicionales:', error);
+                        return {
+                            ...evento,
+                            creador: { nombre: 'Usuario' },
+                            deporte: { nombre: 'Deporte' }
+                        };
+                    }
+                })
+            );
+
+            setEventos(eventosCompletos);
+            setErrorEventos(null);
+        } catch (error) {
+            console.error('Error obteniendo eventos:', error);
+            setErrorEventos('No se pudieron cargar los eventos');
+        } finally {
+            setCargandoEventos(false);
+        }
+    };
+
     return (
         <SafeAreaView className="flex-1 bg-white">
             <View className="flex-row justify-between items-center px-6 py-4">
@@ -281,11 +342,113 @@ export default function EventosScreen() {
                 </Pressable>
             </View>
 
-            <View className="flex-1 px-6">
-                <Text className="text-gray-400 text-center mt-20">
-                    Cargando Eventos.....
-                </Text>
+            <View className="flex-row mx-6 mb-4">
+                <Pressable
+                    onPress={() => setPestañaActiva('disponibles')}
+                    className={`flex-1 py-3 px-4 rounded-full mr-2 ${pestañaActiva === 'disponibles'
+                        ? 'bg-gray-200'
+                        : 'bg-transparent'
+                        }`}
+                >
+                    <Text className={`text-center font-medium ${pestañaActiva === 'disponibles' ? 'text-black' : 'text-gray-500'
+                        }`}>
+                        Disponibles
+                    </Text>
+                </Pressable>
+
+                <Pressable
+                    onPress={() => setPestañaActiva('mis-eventos')}
+                    className={`flex-1 py-3 px-4 rounded-full ml-2 ${pestañaActiva === 'mis-eventos'
+                        ? 'bg-gray-200'
+                        : 'bg-transparent'
+                        }`}
+                >
+                    <Text className={`text-center font-medium ${pestañaActiva === 'mis-eventos' ? 'text-black' : 'text-gray-500'
+                        }`}>
+                        Mis Eventos
+                    </Text>
+                </Pressable>
             </View>
+
+            <ScrollView className="flex-1 px-6">
+                {pestañaActiva === 'disponibles' ? (
+                    <>
+                        {cargandoEventos ? (
+                            <Text className="text-gray-400 text-center mt-20">
+                                Cargando eventos...
+                            </Text>
+                        ) : errorEventos ? (
+                            <Text className="text-red-500 text-center mt-20">
+                                {errorEventos}
+                            </Text>
+                        ) : eventos.length === 0 ? (
+                            <Text className="text-gray-400 text-center mt-20">
+                                No hay eventos disponibles
+                            </Text>
+                        ) : (
+                            eventos.map((evento, index) => (
+                                <View key={evento._id || index} className="bg-white rounded-2xl p-4 mb-4 shadow-sm border border-gray-100">
+                                    {/* Card dinámico con datos reales */}
+                                    <View className="flex-row justify-between items-start mb-2">
+                                        <Text className="text-lg font-semibold text-black flex-1">
+                                            {evento.nombre_evento}
+                                        </Text>
+                                        <View className="flex-row items-center">
+                                            <Ionicons name="fitness-outline" size={16} color="gray" />
+                                            <Text className="text-gray-500 ml-1">{evento.deporte?.nombre || 'Deporte'}</Text>
+                                        </View>
+                                    </View>
+
+                                    <Text className="text-gray-500 mb-3">
+                                        By {evento.creador?.nombre || 'Usuario'}
+                                    </Text>
+
+                                    <View className="flex-row justify-between mb-3">
+                                        <View className="flex-row items-center">
+                                            <Ionicons name="calendar-outline" size={16} color="gray" />
+                                            <Text className="text-gray-600 ml-1">
+                                                {new Date(evento.fecha_evento).toLocaleDateString('es-ES', {
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </Text>
+                                        </View>
+                                        <View className="flex-row items-center">
+                                            <Ionicons name="people-outline" size={16} color="gray" />
+                                            <Text className="text-gray-600 ml-1">
+                                                {evento.participantes?.length || 0}/{evento.max_participantes} participantes
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View className="flex-row items-center mb-4">
+                                        <Ionicons name="location-outline" size={16} color="gray" />
+                                        <Text className="text-gray-600 ml-1">{evento.lugar}</Text>
+                                    </View>
+
+                                    <View className="flex-row gap-3">
+                                        <Pressable className="flex-1 bg-transparent border-2 border-gray-500 rounded-full py-3 items-center">
+                                            <Text className="text-gray-500 font-medium">Ver detalles</Text>
+                                        </Pressable>
+                                        <Pressable className="flex-1 bg-green-600 rounded-full py-3 items-center">
+                                            <View className="flex-row items-center">
+                                                <Ionicons name="person-add" size={14} color="white" />
+                                                <Text className="text-white font-medium ml-2">Unirse</Text>
+                                            </View>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            ))
+                        )}
+                    </>
+                ) : (
+                    <Text className="text-gray-400 text-center mt-20">
+                        Cargando mis eventos...
+                    </Text>
+                )}
+            </ScrollView>
 
             <Modal
                 visible={modalVisible}
