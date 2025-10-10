@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +7,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   sendEmailVerification,
+  signOut,
 } from "firebase/auth";
 import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
@@ -26,17 +27,39 @@ import {
 } from "../../src/Constants";
 import type { Genero } from "../../src/Constants";
 
+type Phase = "form" | "awaitingVerification";
+
+// Banner reutilizable
+function Banner({
+  type,
+  children,
+}: {
+  type: "success" | "error" | "info";
+  children: React.ReactNode;
+}) {
+  const styles =
+    type === "success"
+      ? { bg: "bg-emerald-100/90", border: "border-emerald-500/40", text: "text-emerald-800" }
+      : type === "error"
+      ? { bg: "bg-rose-100/90", border: "border-rose-500/40", text: "text-rose-800" }
+      : { bg: "bg-sky-100/90", border: "border-sky-500/40", text: "text-sky-800" };
+
+  return (
+    <View className={`mb-3 rounded-2xl px-3 py-2 border ${styles.bg} ${styles.border}`}>
+      <Text className={`${styles.text}`}>{children}</Text>
+    </View>
+  );
+}
+
 export default function RegisterScreen() {
   const router = useRouter();
 
-  // Datos básicos
+  // --------- FORM STATE ---------
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
-
-  // Perfil
   const [genero, setGenero] = useState<Genero>("mujer");
 
   // Fecha de nacimiento (picker)
@@ -57,7 +80,13 @@ export default function RegisterScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Fetch catálogos
+  // Verificación
+  const [phase, setPhase] = useState<Phase>("form");
+  const [verificationMsg, setVerificationMsg] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --------- FETCH CATÁLOGOS ---------
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -72,7 +101,7 @@ export default function RegisterScreen() {
     fetchData();
   }, []);
 
-  // ---------- VALIDACIONES ----------
+  // --------- VALIDACIONES ---------
   const nombreOk =
     nombre.trim().length >= VALIDATION_CONFIG.MIN_NAME_LENGTH && SOLO_LETRAS.test(nombre.trim());
   const apellidoOk =
@@ -81,20 +110,16 @@ export default function RegisterScreen() {
   const pwOk = validatePassword(pw);
   const pwMatch = pw.length > 0 && pw === pw2;
 
-  // Fechas para UI y validación
-  const hoy = new Date();                     // tope visual y validación
-  const minPickerDate = new Date(1900, 0, 1); // solo visual
+  // Fechas
+  const hoy = new Date();
+  const minPickerDate = new Date(1900, 0, 1);
   const edadMinima = VALIDATION_CONFIG?.MIN_AGE ?? 16;
-  const limiteEdad = new Date(                // hoy - 16 (solo validación)
-    hoy.getFullYear() - edadMinima,
-    hoy.getMonth(),
-    hoy.getDate()
-  );
+  const limiteEdad = new Date(hoy.getFullYear() - edadMinima, hoy.getMonth(), hoy.getDate());
 
   function validarFechaNacimiento(fecha: Date | null): string | null {
     if (!fecha) return ERROR_MESSAGES.VALIDATION.DATE_REQUIRED;
-    if (fecha > hoy) return ERROR_MESSAGES.VALIDATION.DATE_FUTURE;         // por si escriben futura en web
-    if (fecha > limiteEdad) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;// menor de 16
+    if (fecha > hoy) return ERROR_MESSAGES.VALIDATION.DATE_FUTURE;
+    if (fecha > limiteEdad) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
     if (fecha < minPickerDate) return ERROR_MESSAGES.VALIDATION.DATE_TOO_OLD;
     return null;
   }
@@ -103,19 +128,32 @@ export default function RegisterScreen() {
     setErrorFechaNac(validarFechaNacimiento(fechaNacimiento));
   }, [fechaNacimiento]);
 
-  const nombreHint = useMemo(() => (!nombre || nombreOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID), [nombre, nombreOk]);
-  const apellidoHint = useMemo(() => (!apellido || apellidoOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID), [apellido, apellidoOk]);
-  const emailHint = useMemo(() => (!email || emailOk ? "" : ERROR_MESSAGES.VALIDATION.EMAIL_INVALID), [email, emailOk]);
-  const pwHint = useMemo(() => (!pw || pwOk ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_INVALID), [pw, pwOk]);
-  const pw2Hint = useMemo(() => (!pw2 || pwMatch ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_MISMATCH), [pw2, pwMatch]);
+  const nombreHint = useMemo(
+    () => (!nombre || nombreOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID),
+    [nombre, nombreOk]
+  );
+  const apellidoHint = useMemo(
+    () => (!apellido || apellidoOk ? "" : ERROR_MESSAGES.VALIDATION.NAME_INVALID),
+    [apellido, apellidoOk]
+  );
+  const emailHint = useMemo(
+    () => (!email || emailOk ? "" : ERROR_MESSAGES.VALIDATION.EMAIL_INVALID),
+    [email, emailOk]
+  );
+  const pwHint = useMemo(
+    () => (!pw || pwOk ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_INVALID),
+    [pw, pwOk]
+  );
+  const pw2Hint = useMemo(
+    () => (!pw2 || pwMatch ? "" : ERROR_MESSAGES.VALIDATION.PASSWORD_MISMATCH),
+    [pw2, pwMatch]
+  );
 
   const fechaNacOk = !validarFechaNacimiento(fechaNacimiento);
+  const canSubmit = nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaNacOk && !submitting;
 
-  const canSubmit =
-    nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaNacOk && !submitting;
-
-  // Helpers fecha (web)
-  const fechaParaInputWeb = (fecha: Date): string => fecha.toISOString().split("T")[0];
+  // --------- HELPERS FECHA (WEB) ---------
+  const fechaParaInputWeb = (f: Date): string => f.toISOString().split("T")[0];
   const crearFechaDesdeInputWeb = (s: string): Date => {
     const [y, m, d] = s.split("-").map(Number);
     return new Date(y, m - 1, d);
@@ -123,38 +161,41 @@ export default function RegisterScreen() {
   const formatearFechaParaMostrar = (f: Date) =>
     f.toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
-  // ---------- SUBMIT ----------
+  // --------- COOLDOWN REENVIAR ---------
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    cooldownTimerRef.current && clearInterval(cooldownTimerRef.current);
+    cooldownTimerRef.current = setInterval(() => {
+      setResendCooldown((s) => {
+        if (s <= 1) {
+          cooldownTimerRef.current && clearInterval(cooldownTimerRef.current);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => {
+      cooldownTimerRef.current && clearInterval(cooldownTimerRef.current);
+    };
+  }, [resendCooldown]);
+
+  // ================= SUBMIT (FASE 1) =================
   async function onSubmit() {
     if (!canSubmit || !fechaNacimiento) return;
     setSubmitting(true);
     setFormError(null);
     setSuccessMsg(null);
+    setVerificationMsg(null);
+
     try {
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), pw);
       const displayName = `${nombre.trim()} ${apellido.trim()}`;
       await updateProfile(user, { displayName });
-      try { await sendEmailVerification(user); } catch {}
 
-      try {
-        const yyyy = fechaNacimiento.getFullYear();
-        const mm = String(fechaNacimiento.getMonth() + 1).padStart(2, "0");
-        const dd = String(fechaNacimiento.getDate()).padStart(2, "0");
-        await axios.post("https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/users", {
-          uid: user.uid,
-          nombre,
-          apellido,
-          email,
-          fechaNacimiento: `${yyyy}-${mm}-${dd}`,
-          genero,
-          deporteFavorito: deporteId,
-          nivelExperiencia: nivelId,
-        });
-      } catch (err) {
-        console.log("WARN backend:", err);
-      }
-
-      setSuccessMsg(SUCCESS_MESSAGES.ACCOUNT_CREATED);
-      setTimeout(() => router.replace("/(auth)/Login"), 1500);
+      await sendEmailVerification(user);
+      setPhase("awaitingVerification");
+      setVerificationMsg(`Te enviamos un correo a ${user.email}. Verifica tu email para continuar.`);
+      setResendCooldown(30);
     } catch (e: any) {
       const code = e?.code || "";
       if (code === "auth/email-already-in-use") setFormError(ERROR_MESSAGES.AUTH.EMAIL_IN_USE);
@@ -168,6 +209,141 @@ export default function RegisterScreen() {
     }
   }
 
+  // ================= ACCIONES DE VERIFICACIÓN (FASE 2) =================
+  async function checkVerificationAndFinish() {
+    setSubmitting(true);
+    setVerificationMsg(null);
+    setSuccessMsg(null);
+    try {
+      await auth.currentUser?.reload();
+      const u = auth.currentUser;
+      if (!u) {
+        setVerificationMsg("Tu sesión se cerró. Vuelve a iniciar sesión.");
+        return;
+      }
+      if (!u.emailVerified) {
+        setVerificationMsg("Tu correo aún no está verificado. Revisa tu bandeja o intenta reenviar.");
+        return;
+      }
+
+      // ✔️ Ya verificado: guardamos en el backend
+      if (!fechaNacimiento) return;
+      const yyyy = fechaNacimiento.getFullYear();
+      const mm = String(fechaNacimiento.getMonth() + 1).padStart(2, "0");
+      const dd = String(fechaNacimiento.getDate()).padStart(2, "0");
+
+      try {
+        await axios.post("https://ms-rutafit-neg.vercel.app/ms-rutafit-neg/users", {
+          uid: u.uid,
+          nombre,
+          apellido,
+          email: u.email,
+          fechaNacimiento: `${yyyy}-${mm}-${dd}`,
+          genero,
+          deporteFavorito: deporteId,
+          nivelExperiencia: nivelId,
+        });
+      } catch (err) {
+        console.log("WARN backend:", err);
+      }
+
+      // Mensaje de éxito visible aquí
+      setSuccessMsg("🎉 Tu cuenta ha sido creada con éxito. Ya puedes iniciar sesión.");
+      // Cerrar sesión y redirigir al login
+      await signOut(auth);
+      setTimeout(() => router.replace("/(auth)/Login"), 1500);
+    } catch (e) {
+      console.log("checkVerification error:", e);
+      setVerificationMsg("Error comprobando verificación. Inténtalo de nuevo.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function resendVerification() {
+    if (resendCooldown > 0) return;
+    try {
+      const u = auth.currentUser;
+      if (!u) {
+        setVerificationMsg("Tu sesión se cerró. Vuelve a iniciar sesión.");
+        return;
+      }
+      await sendEmailVerification(u);
+      setVerificationMsg(`Te reenviamos el correo a ${u.email}.`);
+      setResendCooldown(30);
+    } catch (e) {
+      console.log("resend error:", e);
+      setVerificationMsg("No pudimos reenviar el correo. Inténtalo más tarde.");
+    }
+  }
+
+  async function cancelVerification() {
+    try {
+      await signOut(auth);
+    } finally {
+      setPhase("form");
+      setVerificationMsg(null);
+      setSuccessMsg(null);
+      setFormError("Registro cancelado. No se completó la verificación del correo.");
+    }
+  }
+
+  // ================= UI: FASE VERIFICACIÓN =================
+  if (phase === "awaitingVerification") {
+    return (
+      <SafeAreaView className="flex-1 bg-black">
+        <View className="px-6 pt-10 pb-6">
+          <Text className="uppercase tracking-widest text-primary text-3xl font-bold drop-shadow mb-2">
+            Rutafit
+          </Text>
+          <Text className="text-lg font-semibold text-white mt-1">Verifica tu correo</Text>
+        </View>
+
+        <View className="px-6">
+          {successMsg && <Banner type="success">{successMsg}</Banner>}
+          {verificationMsg && <Banner type="error">{verificationMsg}</Banner>}
+
+          <View className="rounded-2xl bg-white/10 border border-white/10 p-4">
+            <Text className="text-white">
+              Te enviamos un email de verificación. Abre el enlace del correo para activar tu cuenta
+              y luego toca <Text className="font-semibold">“Ya verifiqué mi correo”</Text>.
+            </Text>
+          </View>
+
+          <View className="mt-5 gap-3">
+            <Pressable
+              onPress={checkVerificationAndFinish}
+              className={`rounded-2xl px-6 py-3 items-center ${submitting ? "bg-primary/50" : "bg-primary"}`}
+              disabled={submitting}
+            >
+              <Text className="text-white font-semibold">
+                {submitting ? "Comprobando..." : "Ya verifiqué mi correo"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={resendVerification}
+              className={`rounded-2xl px-6 py-3 items-center ${resendCooldown > 0 ? "bg-gray-600" : "bg-gray-500"}`}
+              disabled={resendCooldown > 0}
+            >
+              <Text className="text-white font-semibold">
+                {resendCooldown > 0 ? `Reenviar en ${resendCooldown}s` : "Reenviar correo"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={cancelVerification}
+              className="rounded-2xl px-6 py-3 items-center bg-white/10 border border-white/10"
+            >
+              <Text className="text-white font-semibold">Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ================= UI: FASE FORMULARIO =================
   return (
     <SafeAreaView className="flex-1 bg-black">
       <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
@@ -179,6 +355,9 @@ export default function RegisterScreen() {
         </View>
 
         <View className="px-6">
+          {!!formError && <Banner type="error">{formError}</Banner>}
+          {!!successMsg && <Banner type="success">{successMsg}</Banner>}
+
           {/* Nombre */}
           <View className="mb-4">
             <Text className="text-[13px] text-white mb-2">Nombre</Text>
@@ -189,7 +368,10 @@ export default function RegisterScreen() {
                 placeholder={PLACEHOLDERS.NAME}
                 placeholderTextColor="#9ca3af"
                 value={nombre}
-                onChangeText={(t) => { setNombre(t); if (formError) setFormError(null); }}
+                onChangeText={(t) => {
+                  setNombre(t);
+                  if (formError) setFormError(null);
+                }}
                 returnKeyType="next"
                 autoCapitalize="words"
               />
@@ -207,7 +389,10 @@ export default function RegisterScreen() {
                 placeholder={PLACEHOLDERS.LAST_NAME}
                 placeholderTextColor="#9ca3af"
                 value={apellido}
-                onChangeText={(t) => { setApellido(t); if (formError) setFormError(null); }}
+                onChangeText={(t) => {
+                  setApellido(t);
+                  if (formError) setFormError(null);
+                }}
                 returnKeyType="next"
                 autoCapitalize="words"
               />
@@ -227,7 +412,10 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 value={email}
-                onChangeText={(t) => { setEmail(t); if (formError) setFormError(null); }}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  if (formError) setFormError(null);
+                }}
                 returnKeyType="next"
               />
             </View>
@@ -245,7 +433,10 @@ export default function RegisterScreen() {
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw}
                 value={pw}
-                onChangeText={(t) => { setPw(t); if (formError) setFormError(null); }}
+                onChangeText={(t) => {
+                  setPw(t);
+                  if (formError) setFormError(null);
+                }}
                 returnKeyType="next"
               />
               <Pressable onPress={() => setShowPw((s) => !s)} hitSlop={8}>
@@ -266,7 +457,10 @@ export default function RegisterScreen() {
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPw2}
                 value={pw2}
-                onChangeText={(t) => { setPw2(t); if (formError) setFormError(null); }}
+                onChangeText={(t) => {
+                  setPw2(t);
+                  if (formError) setFormError(null);
+                }}
                 returnKeyType="done"
                 onSubmitEditing={onSubmit}
               />
@@ -285,7 +479,7 @@ export default function RegisterScreen() {
                 type="date"
                 value={fechaNacimiento ? fechaParaInputWeb(fechaNacimiento) : ""}
                 min={`${minPickerDate.getFullYear()}-${String(minPickerDate.getMonth() + 1).padStart(2, "0")}-${String(minPickerDate.getDate()).padStart(2, "0")}`}
-                max={`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`} // hasta HOY
+                max={`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`}
                 onChange={(e) => {
                   const f = e.target.value ? crearFechaDesdeInputWeb(e.target.value) : null;
                   setFechaNacimiento(f);
@@ -317,7 +511,6 @@ export default function RegisterScreen() {
             >
               <Text className={`${genero === "mujer" ? "text-primary font-semibold" : "text-gray-800"}`}>Mujer</Text>
             </Pressable>
-
             <Pressable
               className={`flex-1 rounded-2xl px-6 py-3 items-center border ${genero === "hombre" ? "bg-primary/20 border-primary" : "bg-gray-100 border-gray-200"}`}
               onPress={() => setGenero("hombre")}
@@ -348,18 +541,6 @@ export default function RegisterScreen() {
             </Picker>
           </View>
 
-          {/* Mensajes globales */}
-          {!!formError && (
-            <Text className="mt-2 text-[13px]" style={{ color: "#C51217" }}>
-              {formError}
-            </Text>
-          )}
-          {!!successMsg && (
-            <Text className="mt-2 text-[13px]" style={{ color: "green" }}>
-              {successMsg}
-            </Text>
-          )}
-
           {/* Botón Crear */}
           <View className="mt-4 mb-6">
             <Pressable
@@ -383,11 +564,11 @@ export default function RegisterScreen() {
       {/* DatePicker nativo (solo mobile) */}
       {mostrarDatePickerNacimiento && Platform.OS !== "web" && (
         <DateTimePicker
-          value={fechaNacimiento ?? new Date()}      // abre en HOY
+          value={fechaNacimiento ?? new Date()}
           mode="date"
-          display={Platform.OS === "android" ? "calendar" : "inline"} // Android: calendario; iOS: inline
-          minimumDate={minPickerDate}               // se ven todos los años desde 1900
-          maximumDate={hoy}                         // hasta HOY
+          display={Platform.OS === "android" ? "calendar" : "inline"}
+          minimumDate={minPickerDate}
+          maximumDate={hoy}
           onChange={(_, d) => {
             setMostrarDatePickerNacimiento(false);
             if (d) setFechaNacimiento(d);
