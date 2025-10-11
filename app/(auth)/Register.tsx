@@ -110,17 +110,18 @@ export default function RegisterScreen() {
   const pwOk = validatePassword(pw);
   const pwMatch = pw.length > 0 && pw === pw2;
 
-  // Fechas
+  // --- Reglas de edad (mínimo y máximo) ---
   const hoy = new Date();
-  const minPickerDate = new Date(1900, 0, 1);
   const edadMinima = VALIDATION_CONFIG?.MIN_AGE ?? 16;
-  const limiteEdad = new Date(hoy.getFullYear() - edadMinima, hoy.getMonth(), hoy.getDate());
+  const edadMaxima = VALIDATION_CONFIG?.MAX_AGE ?? 75; // ← Máximo 80 años
+  const limiteEdadMin = new Date(hoy.getFullYear() - edadMinima, hoy.getMonth(), hoy.getDate()); // el más joven permitido
+  const limiteEdadMax = new Date(hoy.getFullYear() - edadMaxima, hoy.getMonth(), hoy.getDate()); // el más viejo permitido
 
   function validarFechaNacimiento(fecha: Date | null): string | null {
     if (!fecha) return ERROR_MESSAGES.VALIDATION.DATE_REQUIRED;
     if (fecha > hoy) return ERROR_MESSAGES.VALIDATION.DATE_FUTURE;
-    if (fecha > limiteEdad) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
-    if (fecha < minPickerDate) return ERROR_MESSAGES.VALIDATION.DATE_TOO_OLD;
+    if (fecha > limiteEdadMin) return ERROR_MESSAGES.VALIDATION.DATE_UNDERAGE;
+    if (fecha < limiteEdadMax) return "No puedes registrarte con más de 80 años.";
     return null;
   }
 
@@ -150,7 +151,8 @@ export default function RegisterScreen() {
   );
 
   const fechaNacOk = !validarFechaNacimiento(fechaNacimiento);
-  const canSubmit = nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaNacOk && !submitting;
+  const canSubmit =
+    nombreOk && apellidoOk && emailOk && pwOk && pwMatch && fechaNacOk && !submitting;
 
   // --------- HELPERS FECHA (WEB) ---------
   const fechaParaInputWeb = (f: Date): string => f.toISOString().split("T")[0];
@@ -247,9 +249,7 @@ export default function RegisterScreen() {
         console.log("WARN backend:", err);
       }
 
-      // Mensaje de éxito visible aquí
       setSuccessMsg("🎉 Tu cuenta ha sido creada con éxito. Ya puedes iniciar sesión.");
-      // Cerrar sesión y redirigir al login
       await signOut(auth);
       setTimeout(() => router.replace("/(auth)/Login"), 1500);
     } catch (e) {
@@ -478,8 +478,10 @@ export default function RegisterScreen() {
               <input
                 type="date"
                 value={fechaNacimiento ? fechaParaInputWeb(fechaNacimiento) : ""}
-                min={`${minPickerDate.getFullYear()}-${String(minPickerDate.getMonth() + 1).padStart(2, "0")}-${String(minPickerDate.getDate()).padStart(2, "0")}`}
-                max={`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`}
+                // mínimo permitido = fecha para 80 años (impide >80)
+                min={fechaParaInputWeb(limiteEdadMax)}
+                // máximo permitido = hoy (impide futuro y <16 lo valida la función)
+                max={fechaParaInputWeb(hoy)}
                 onChange={(e) => {
                   const f = e.target.value ? crearFechaDesdeInputWeb(e.target.value) : null;
                   setFechaNacimiento(f);
@@ -567,11 +569,16 @@ export default function RegisterScreen() {
           value={fechaNacimiento ?? new Date()}
           mode="date"
           display={Platform.OS === "android" ? "calendar" : "inline"}
-          minimumDate={minPickerDate}
+          // mínimo permitido = fecha para 80 años (impide >80)
+          minimumDate={limiteEdadMax}
+          // máximo permitido = hoy
           maximumDate={hoy}
           onChange={(_, d) => {
             setMostrarDatePickerNacimiento(false);
-            if (d) setFechaNacimiento(d);
+            if (d) {
+              setFechaNacimiento(d);
+              setErrorFechaNac(validarFechaNacimiento(d));
+            }
           }}
         />
       )}
