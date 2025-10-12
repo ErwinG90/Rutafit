@@ -15,17 +15,30 @@ export default function MapHeader({ displayName }: { displayName: string }) {
     >
       <View
         style={{
-          marginHorizontal: 12, marginBottom: 8, backgroundColor: "white",
-          paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14,
-          borderWidth: 1, borderColor: "#EEF2F7", shadowColor: "#000",
-          shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+          marginHorizontal: 12,
+          marginBottom: 8,
+          backgroundColor: "white",
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: "#EEF2F7",
+          shadowColor: "#000",
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          elevation: 2,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View
             style={{
-              width: 28, height: 28, borderRadius: 999, backgroundColor: "#F1F5F9",
-              alignItems: "center", justifyContent: "center", marginRight: 10,
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              backgroundColor: "#F1F5F9",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 10,
             }}
           >
             <Ionicons name="person-outline" size={16} color="#111827" />
